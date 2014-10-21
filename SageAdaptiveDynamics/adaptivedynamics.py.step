@@ -1,0 +1,127 @@
+# requires: $(SageDynamics)/dynamicalsystems.py $(SageDynamics)/latex_output.py
+from sage.all import *
+import os
+import sys
+sys.path.append( os.environ['SageDynamics'] )
+from dynamicalsystems import *
+from latex_output import *
+
+from sage.symbolic.relation import solve
+from sage.calculus.calculus import limit
+from sage.misc.latex import latex
+
+def limits(expr, lims):
+    for x,y in lims.items():
+        args = {str(x):y}
+        #print 'limit', args, expr
+        expr = limit(expr, **args)
+        #print ' =>',expr
+    return expr
+
+class AdaptiveDynamicsException(Exception):
+    def __init__( self, message, latex_str ):
+        self._latex_str = latex_str
+        Exception.__init__( self, message )
+
+class AdaptiveDynamicsModel(ODE_system):
+    """Given a population dynamics model in which dynamics of population
+    sizes are driven by certain parameters, if we suppose that some of those
+    parameters are subject to mutation, we can construct an adaptive dynamics
+    model describing how selection will drive those parameters to evolve.
+
+    This class infers the evolutionary dynamics from a population dynamics
+    model given a distribution of mutations to parameters.
+
+    Note it won't work as is for a lot of population models - among other
+    things, it needs to be able to solve the population dynamics' equilibrium
+    symbolically, and it assumes there is a unique equilibrium.  It also
+    doesn't handle branching points, extinctions, etc."""
+    def __init__(self, popdyn_model, phenotype_indexers, phenotype_dependencies={}, bindings={}):
+        """Infer adaptive dynamics from population dynamics given an
+        evolving phenotypic parameter that determines the variation in the
+        relevant quantities in the population dynamics.
+
+        popdyn_model: an object of class PopulationDynamicsModel
+        phenotype_indexers: list of "indexers" for variables describing each
+          population of creatures' character, which can change by a
+          process of mutation and selection.
+        phenotype_dependencies: Whereas things that are simple variables in
+          the population dynamics, say r_i, an intrinsic growth rate, now
+          need to be treated as functions of phenotypic quantities, say
+          r_i(u_i), this argument is a dict mapping variable names to their new
+          functional representations, for instance
+          {'r_i':sage.symbolic.function_factory.function('r_i',u_i)}."""
+        self._debug_output = latex_output_base( write_to_string() )
+        # before doing anything, change the dependent quantities from simple
+        # variables to functions.
+        popdyn_flow = dict( (k,apply(v,[],phenotype_dependencies))
+          for k,v in popdyn_model._flow.items() )
+        equil_nontrivial = popdyn_model.stable_nontrivial_equilibria()
+        # there should just be one nontrivial solution
+        # otherwise, we would have to handle all this more carefully
+        if len(equil_nontrivial) != 1:
+            self._debug_output.write( "All equilibria of population dynamics:" )
+            self._debug_output.write_block( popdyn_model.equilibria() )
+            raise AdaptiveDynamicsException( 'Population Dynamics does not have a unique stable nontrivial equilibrium', self._debug_output._output._str )
+        equil_soln = equil_nontrivial[0]
+        self._debug_output.write( "Equilibrium of the population dynamics:" )
+        self._debug_output.write_block( equil_soln )
+        # We get the invasion exponent for u_i by adding an extra population,
+        # which will soon be asymptotically identical to u_i.
+        extended_system = deepcopy(popdyn_model)
+        extended_system.set_population_indices(popdyn_model._population_indices + ['i'])
+        #self._debug_output.write_block( extended_system )
+        #self._debug_output.write( "And with bindings: " )
+        #self._debug_output.write_block(  popdyn_model._bindings )
+        extended_system = extended_system.bind(popdyn_model._bindings)
+        self._debug_output.write( "Original pop-dyn system: " )
+        self._debug_output.write_block( popdyn_model )
+        self._debug_output.write( "Extended pop-dyn system: " )
+        self._debug_output.write_block( extended_system )
+        X_i = extended_system._population_indexer['i']
+        dXi_dt = extended_system._flow[X_i]
+        # Now: The invasion exponent for u_i is 1/X_i dX_i/dt
+        I_i = dXi_dt / X_i
+        self._debug_output.write( 'The invasion rate for population $i$ is:\n\\begin{align*}\n',
+            '  \\mathscr I = \\frac{1}{%s}\\frac{d%s}{dt}' % (latex(X_i), latex(X_i)), ' &= ',
+            latex( I_i ), '\n\\end{align*}\n' )
+        #I_i = I_i.limit(X_i = 0)
+        #self._debug_output.write( ' &= ', latex( I_i ), '\n\\end{align}\n' )
+        # The invasion exponent we want is lim_{u_i->u, X_i->0}dI/du_i
+        self._debug_output.write( 'And the invasion exponent is\n\\begin{align*}\n', 
+            '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = \\lim_{%s,%s\\to0}%s' %
+                (latex(u[j]), ','.join('%s\\to %s' % (latex(uu['i']),latex(uu[j])) for uu in phenotype_indexers),
+                 latex(X_i), latex(diff(I_i, u['i']))) for j in popdyn_model._population_indices
+                for u in phenotype_indexers ),
+            '.\n\\end{align*}\n')
+        dI_du = [diff(I_i,u['i']) for u in phenotype_indexers]
+        dI_du = [ dI_dui.subs(equil_soln) for dI_dui in dI_du ]
+        dI_du = [ (j, u[j], Xj, limits(dI_dui,
+              dict((uu['i'],uu[j]) for uu in phenotype_indexers)))
+            for j, Xj in zip(popdyn_model._population_indices,
+              popdyn_model.population_vars())
+            for u, dI_dui in zip(phenotype_indexers, dI_du) ]
+        #print 'as u_i->u_*:\n', join( (" dI/d%s: %s" % (u_j, dI_duj)
+        #    for u_j, X_j, dI_duj in dI_du), '\n')
+        dI_du = [ (j, u_j, X_j, dI_duj.limit(X_i = 0)) for j, u_j, X_j, dI_duj in dI_du ]
+        self._debug_output.write( 'Which comes out to\n\\begin{align*}\n', 
+            '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = %s' %
+                (latex(u_j), latex(dI_duj)) for j, u_j, X_j, dI_duj in dI_du ),
+            '.\n\\end{align*}\n')
+        # The adaptive dynamics system is du/dt = \gamma \hat{X}_i dI/du.
+        # This is a general adaptive dynamics for the one-species,
+        # one-resource Mac/Lev system - we'll supply a specific mapping
+        # from u to b, m, c at solve time.
+        self._S = dict( (u_j, dI_duj) for j, u_j, X_j, dI_duj in dI_du )
+        self._debug_output.write( '\\[ ', 
+            '\\mathbf S', latex( column_vector( [ u_j for u_j in self._S.keys() ] ) ), ' = ',
+            latex( column_vector( [ dI_duj for dI_duj in self._S.values() ] ) ), ' \\]\n' )
+        gamma = SR.var('gamma')
+        u_flow = dict( (u_j, gamma*equil_soln[X_j]*dI_duj)
+            for j, u_j, X_j, dI_duj in dI_du)
+        bindings=popdyn_model._bindings.merge(equil_soln).merge(bindings)
+        u_flow = dict( (k, bindings(v)) for k,v in u_flow.items() )
+        super(AdaptiveDynamicsModel, self).__init__( u_flow, list(u_flow.keys()),
+          bindings=bindings )
+        self._debug_output.write( 'The adaptive dynamics comes out to' )
+        self._debug_output.write_block( self )

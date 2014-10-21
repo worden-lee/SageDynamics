@@ -1,0 +1,110 @@
+from sage.all import *
+from sage.misc.latex import *
+
+# these are from sage.misc.latex
+COMMON_HEADER = \
+r'''\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\pagestyle{empty}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+'''
+
+LATEX_HEADER = (
+r'''\documentclass{article}
+''' + COMMON_HEADER +
+r'''\oddsidemargin 0.0in
+\evensidemargin 0.0in
+\textwidth 6.45in
+\topmargin 0.0in
+\headheight 0.0in
+\headsep 0.0in
+\textheight 9.0in
+''')
+
+class latex_output_base(SageObject):
+    '''latex_output: class that can collect latex output and do some formatting'''
+    def __init__(self, _output):
+        self._output = _output
+    def write(self, *args):
+        '''Output text directly.  Unlike file.write() (apparently), we support
+        multiple arguments to write().'''
+        for a in args:
+            self._output.write( a )
+        return self;
+    def write_inline(self, *args):
+        '''Output latex representation of each argument, inline in math mode'''
+        for o in args:
+            self.write( '$%$' % latex(o) )
+        return self;
+    def write_block(self, *args):
+        '''Output latex representation of each argument, set apart in \\[ \\]'''
+        for o in args:
+            self.write( '\n\\[%s\\]\n' % latex(o) )
+        return self;
+    def write_environment(self, envname, *stuff):
+        return self.write( '\n\\begin{', envname, '}\n  ', '\n  '.join(*stuff), '\n\\end{', envname, '}\n' );
+    def write_equality(self, *args):
+        return self.write( '\n\\[\n  ', ' = '.join( latex(a) for a in args ), '\n\\]\n' )
+    def write_equality_aligned(self, *args):
+        '''For convenience: write that one thing is equal to another (or more).
+        This is because write_block( a == b ) often just writes "false"...'''
+        return self.write_environment( 'align*', '\n    &= '.join( latex(a) for a in args ) );
+    def close(self):
+        self._output.close()
+        return self;
+
+class latex_output_file(latex_output_base):
+    '''latex_output_file: class to write a latex file.
+    Takes care of document header and footer; provides functions write_latex()
+    (output latex representations of things inline) and write_block() (output
+    latex of things in blocks) as well as regular write().'''
+    def __init__(self, _file):
+        '''Construct this object given a file object.
+        It's better to use the function latex_output( filename ) rather than
+        calling this constructor directly.'''
+        super(latex_output_file,self).__init__(_file)
+        self.write( LATEX_HEADER )
+        self.write( latex_extra_preamble() )
+        self.write( '\\begin{document}\n' )
+    def close(self):
+        '''Write closing latex commands and close file'''
+        self.write( '\n\\end{document}\n' )
+        super(latex_output_file,self).close()
+
+class write_to_string:
+    '''Class to use in place of a file to capture the output of latex_output_file'''
+    def __init__(self):
+        self._str = ''
+    def write(self, arg):
+        self._str += arg
+    def close(self): pass
+
+def latex_output( filename ):
+    '''Create a latex_output_file object writing to the specified filename'''
+    return latex_output_file( open( filename, 'w' ) )
+
+class wrap_latex( SageObject ):
+    '''A helper class for inserting literal latex code into a context that requires
+    an object with a latex() method'''
+    def __init__(self, text):
+        self._str = text
+    def _latex_(self):
+        return self._str
+
+class column_vector(SageObject): # v.column() is missing?
+    '''column_vector( x ) behaves just like vector( x ) but draws itself
+    as a nice column in latex'''
+    def __init__(self, *args):
+        self.vector = vector( *args )
+    def __call__(self, *args):
+        return self.vector( *args )
+    def __getitem__(self, i):
+        return self.vector[i]
+    def __iter__(self):
+        return iter(self.vector)
+    def _latex_(self):
+        return ( '\\left(\\begin{array}{c}\n%s\n\\end{array}\\right)' %
+          '\\\\\n'.join( '  %s' % latex(e) for e in self.vector ) )
