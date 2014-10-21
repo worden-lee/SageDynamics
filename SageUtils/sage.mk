@@ -7,7 +7,7 @@ export SAGE_DOC = /usr/share/sage/devel/doc
 endif
 
 # how to run a sage script and capture its output
-# the odd cat command is possibly temporary - it puts the 
-# script's output into the .make.log file if the script fails
+# the odd tee command is possibly temporary - it puts the 
+# script's output into the .make.log as well as the output file
 %.sage.out : %.sage
-	(sage $< >$<.dmp && mv $<.dmp $@) || ! cat $<.dmp
+	(sage $< | tee $<.dmp) && mv $<.dmp $@
