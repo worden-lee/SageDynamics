@@ -8,6 +8,17 @@ endif
 
 # how to run a sage script and capture its output
 # the odd tee command is possibly temporary - it puts the 
-# script's output into the .make.log as well as the output file
+# script's output into the .make.log (or console) as well as the output file
 %.sage.out : %.sage
-	(sage $< | tee $<.dmp) && mv $<.dmp $@
+	$(RM) $@ $*.status
+	(sage $< && touch $*.status) | tee $*.dmp
+	[ -e $*.status ] && ($(RM) $*.status && mv $*.dmp $@) || exit 1
+
+#	(sage $< | tee $<.dmp) && mv $<.dmp $@
+
+# and a convenience rule to invoke sage interactively, but using all the
+# exports from the projects' makefiles
+sage :
+	sage
+
+.PHONY: sage

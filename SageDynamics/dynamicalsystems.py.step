@@ -1,3 +1,4 @@
+# requires: $(SageAdaptiveDynamics)/adaptivedynamics.py
 """Dynamical systems classes"""
 
 from sage.all import *
@@ -5,14 +6,24 @@ from string import join
 from sage.misc.latex import _latex_file_
 latex.add_to_preamble('\\usepackage{amsmath}')
 
-class ODE_trajectory(SageObject):
+def hat(v):
+    """little utility function to add a hat to a Sage variable, e.g.
+    make X_i into \hat{X}_i."""
+    if not v.is_symbol():
+        raise ValueError( str(v) + ' is not a symbol' )
+    import re
+    name = re.sub( '^([^_]*)(.*?)$', r'\g<1>hat\g<2>', str(v) )
+    latex_name = re.sub( r'^([^_]*)(.*?)$', r'\hat{\g<1>}\g<2>', latex(v) )
+    return SR.symbol( name, latex_name=latex_name )
+
+class ODETrajectory(SageObject):
     """A trajectory of a system of ordinary differential equations.
 
     This class remembers the ODE that made it, and the symbolic variables
     involved in the ODE, so that the trajectories of complex symbolic
     expressions can be evaluated and plotted."""
     def __init__(self, system, timeseries):
-        """system: the ODE_system object that provided the dynamics
+        """system: the ODESystem object that provided the dynamics
         timeseries: a list of dictionaries, each providing a set of
             variable->number mappings, including the time variable.
         """
@@ -133,9 +144,11 @@ class Bindings(dict):
         being applied afterward.  Thus self's bindings take priority, if there's
         any potential conflict."""
         return deepcopy(self).bind(other, **args)
-    def bind(self, other={}, **args):
-        #print 'merge bindings:', self, ',', other, ', ', dict(**args)
-        other = Bindings(other, **args)
+    def __add__(self, other):
+        return self.merge(other)
+    def bind(self, *args, **named_args):
+        #print 'merge bindings:', self, ',', list(*args), ', ', dict(**named_args)
+        other = Bindings(*args, **named_args)
         #for k, v in self.items():
         #    self[k] = other.substitute(v)
         try: # is it a FunctionBindings?
@@ -198,7 +211,7 @@ class FunctionBindings(Bindings):
         for k, v in self.items():
             self[k] = bindings(v).function(*v.args())
 
-class ODE_system(SageObject):
+class ODESystem(SageObject):
     """A system of ordinary differential equations.
 
     This object holds a symbolic representation of the ODE's flow vector field,
@@ -216,15 +229,15 @@ class ODE_system(SageObject):
             an ordering.  These are variables, not strings.
         time_variable: typically t, but could be something else.
         bindings: optional substitutions of values for symbolic variables
-            and functions.  It is assumed that these substitutions have 
-            been applied to the flow, and this is used to interpret symbolic
+            and functions.  This is used to interpret symbolic
             expressions for plotting, etc.
         """
-        #print 'ODE_system init', (flow, vars, time_variable, bindings)
+        #print 'ODESystem init', (flow, vars, time_variable, bindings)
         self._flow = flow
         self._vars = vars
         self._time_variable = time_variable
         self._bindings = bindings
+        self._flow = dict( (k, bindings(v)) for k,v in self._flow.items() )
     def __repr__(self):
         """Output the system as a system of differential equations"""
         return join( ('%s -> %s'%(v,self._flow[v])
@@ -250,15 +263,11 @@ class ODE_system(SageObject):
     def time_variable(self):
         """Provide the independent variable, for instance for plotting"""
         return self._time_variable
-    def bind_in_place(self, binding):
+    def bind_in_place(self, *bindings):
         """Apply bindings to my formulas without copying to a new object.
 
         See bind(), below."""
-        # make binding into a Bindings if needed
-        try:
-            binding.substitute( 't' )
-        except AttributeError:
-             binding = Bindings( binding )
+        binding = Bindings( *bindings )
         self._flow = dict( (k, binding(v)) for k,v in self._flow.items() )
         self._bindings = self._bindings.merge(binding)
     def bind(self, bindings):
@@ -281,7 +290,7 @@ class ODE_system(SageObject):
         state variables (in that order).
 
         This function returns the numerical solution, but it also stores it
-        in the ODE_system object's state, so that subsequent calls to plot()
+        in the ODESystem object's state, so that subsequent calls to plot()
         refer to the most recent solution generated."""
         #print "desolve: %s, %s, %s, %s, %s" % (
         #  [self._flow[v] for v in self._vars],
@@ -295,7 +304,7 @@ class ODE_system(SageObject):
         timeseries = [ dict( (k,v) for k,v in
           zip([self._time_variable]+self._vars,point) )
           for point in soln ]
-        return ODE_trajectory(self, timeseries)
+        return ODETrajectory(self, timeseries)
     def plot_vector_field(self, xlims, ylims, filename='', vf=None, xlabel=-1, ylabel=-1, **args):
         xlims = tuple( self._bindings.substitute( v ) for v in xlims )
         ylims = tuple( self._bindings.substitute( v ) for v in ylims )
@@ -326,6 +335,8 @@ class ODE_system(SageObject):
     def equilibria(self):
         equil_eqns = [ 0 == rhs for rhs in self._flow.values() ]
         return solve( equil_eqns, *self._vars, solution_dict=True )
+    def interior_equilibria(self):
+        return [ eq for eq in self.equilibria() if all( eq[x] != 0 for x in self._vars ) ]
     def jacobian(self, at=None):
         j = dict( ( ki, dict( ( kj, diff( self._flow[ki], kj ) ) for kj in self._vars ) ) for ki in self._vars )
         try:
@@ -336,12 +347,14 @@ class ODE_system(SageObject):
     def jacobian_matrix(self, at=None):
         jdict = self.jacobian(at)
         return matrix( [ [ jdict[ki][kj] for kj in self._vars ] for ki in self._vars ] )
-    def stable_equilibria(self):
-        return [ eq for eq in self.equilibria() if self.is_stable( self.jacobian_matrix( eq ) ) ]
     def is_stable(self, matrix):
         for e in matrix.eigenvalues():
             if real( e ) >= 0: return false
         return true
+    def stable_equilibria(self):
+        return [ eq for eq in self.equilibria() if self.is_stable( self.jacobian_matrix( eq ) ) ]
+    def stable_interior_equilibria(self):
+        return [ eq for eq in self.interior_equilibria() if self.is_stable( self.jacobian_matrix( eq ) ) ]
     def plot_bifurcation_diagram( self, ind_range, dep_range, filename=None, xlabel=None, ylabel=None, **args ):
         (p, pmin, pmax) = ind_range
         (y, ymin, ymax) = dep_range
@@ -390,6 +403,61 @@ class ODE_system(SageObject):
             bp.save( filename )
         return bp
 
+class NumericalODESystem( ODESystem ):
+    """Where the base ODESystem has a system of Sage expressions to
+    specify its flow, this uses an instance method, operating on
+    python data (compatible with scipy.integrate.odeint) to provide
+    the flow vector field.
+    
+    This is an abstract base class. It's used by providing a subclass
+    with a meaningful compute_flow() method."""
+    def __init__(self, vars, time_variable=SR.var('t'),
+            bindings=Bindings(), flow=None):
+        self._vars = vars
+        self._time_variable = time_variable
+        self._bindings = bindings
+        # note flow is only used for printing out the system
+        self._flow = flow
+        if self._flow is not None:
+            self._flow = dict( (k, bindings(v)) for k,v in self._flow.items() )
+    def solve(self, initial_conditions, end_points=20, step=0.1):
+        import numpy, scipy.integrate
+        initial_t = initial_conditions[0]
+        initial_state = numpy.array( initial_conditions[1:], float )
+        times = numpy.arange( initial_t, end_points, step )
+        soln = scipy.integrate.odeint( lambda y, t: self.compute_flow( y, t ), initial_state, times )
+        # make that timeseries of lists into timeseries of dictionaries
+        timeseries = [ dict( (k,v) for k,v in
+          zip([self._time_variable]+self._vars,[t]+list(point)) )
+          for t, point in zip(times, soln) ]
+        return ODETrajectory(self, timeseries)
+    def compute_flow(self, y, t):
+        pass
+    def plot_vector_field(self, xlims, ylims, filename='', vf=None, xlabel=-1, ylabel=-1, t=0, **options):
+        from sage.plot.all import Graphics
+        from sage.misc.misc import xsrange
+        from sage.plot.plot_field import PlotField
+        from sage.plot.misc import setup_for_eval_on_grid
+        _, rangez = setup_for_eval_on_grid( [], ( xlims, ylims ), options['plot_points'] )
+        # ??
+        print _
+        xs, ys, dxs, dyz = [], [], [], []
+        for x in xsrange( *rangez[0], include_endpoint=True ):
+            for y in xsrange( *rangez[1], include_endpoint=True ):
+                try:
+                    v = self.compute_flow( numpy.array( [ x, y ], float ), t )
+                    xs.append( x )
+                    ys.append( y )
+                    dxs.append( v[0] )
+                    dys.append( v[1] )
+                except: pass
+        import numpy
+        dxs = numpy.ma.masked_invalid( numpy.array( dxs, dtype=float ) )
+        dys = numpy.ma.masked_invalid( numpy.array( dys, dtype=float ) )
+        g = Graphics()
+        g._set_extra_kwds( Graphics._extract_kwds_for_show( options ) )
+        g.add_primitive( PlotField( xs, ys, dxs, dys, options ) )
+        return g
 
 class indexer(SageObject):
     """A little object that behaves like a dictionary of variables,
@@ -411,8 +479,35 @@ class indexer(SageObject):
             except TypeError:
                 return symbolic_expression("%s_%s" % (self._f,i))
 
-class PopulationDynamicsSystem(ODE_system):
-    """Specialization of ODE_system for population dynamics systems"""
+class indexer_2d(indexer):
+    """Instead of mapping i |-> x_i, this does a 2-step mapping
+    i |-> j |-> x_i_j.  That is, indexer_2d('x')[i][j] produces x_i_j."""
+    def __getitem__(self, i):
+        class subindexer(indexer):
+            def __init__(self, f, i):
+                self._f = f
+                self._i = i
+            def __getitem__(self, j):
+                return SR.symbol( '%s_%s_%s' % (self._f, self._i, j),
+                    latex_name='%s_{%s%s}' % (self._f, self._i, j) )
+        return subindexer( self._f, i )
+
+class indexer_2d_reverse(indexer_2d):
+    """Just like indexer_2d but maps j |-> i |-> x_i_j rather than to
+    x_j_i as the other one would do.  Useful when you want a way to
+    generate all x_i_j for a given j, as I do."""
+    def __getitem__(self, j):
+        class subindexer(indexer):
+            def __init__(self, f, j):
+                self._f = f
+                self._j = j
+            def __getitem__(self, i):
+                return SR.symbol( '%s_%s_%s' % (self._f, i, self._j ),
+                    latex_name='%s_{%s%s}' % (self._f, i, self._j ) )
+        return subindexer( self._f, j )
+
+class PopulationDynamicsSystem(ODESystem):
+    """Specialization of ODESystem for population dynamics systems"""
     def __init__(self, vars, population_indices, population_indexer,
             time_variable=SR.var('t'),
             bindings=Bindings()):
@@ -449,7 +544,7 @@ class PopulationDynamicsSystem(ODE_system):
     def stable_nontrivial_equilibria(self):
         return [ eq for eq in self.nontrivial_equilibria() if self.is_stable( self.jacobian_matrix( eq ) ) ]
     def plot_ZNGIs( self, xlims, ylims, vars=None, **args ):
-        """Plot populations' zero net growth isoclines, using ODE_system's
+        """Plot populations' zero net growth isoclines, using ODESystem's
         plot_isoclines()."""
         if vars is None:
             vars = self.population_vars()

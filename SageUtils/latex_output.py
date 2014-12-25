@@ -28,30 +28,34 @@ class latex_output_base(SageObject):
     '''latex_output: class that can collect latex output and do some formatting'''
     def __init__(self, _output):
         self._output = _output
+    def latex(self, a):
+        if isinstance(a, basestring):
+            return a
+        return latex(a)
     def write(self, *args):
         '''Output text directly.  Unlike file.write() (apparently), we support
         multiple arguments to write().'''
         for a in args:
-            self._output.write( a )
+            self._output.write( self.latex( a ) )
         return self;
     def write_inline(self, *args):
         '''Output latex representation of each argument, inline in math mode'''
         for o in args:
-            self.write( '$%$' % latex(o) )
+            self.write( '$%$' % self.latex(o) )
         return self;
     def write_block(self, *args):
         '''Output latex representation of each argument, set apart in \\[ \\]'''
         for o in args:
-            self.write( '\n\\[%s\\]\n' % latex(o) )
+            self.write( '\n\\[%s\\]\n' % self.latex(o) )
         return self;
     def write_environment(self, envname, *stuff):
         return self.write( '\n\\begin{', envname, '}\n  ', '\n  '.join(*stuff), '\n\\end{', envname, '}\n' );
     def write_equality(self, *args):
-        return self.write( '\n\\[\n  ', ' = '.join( latex(a) for a in args ), '\n\\]\n' )
+        return self.write( '\n\\[\n  ', ' = '.join( self.latex(a) for a in args ), '\n\\]\n' )
     def write_equality_aligned(self, *args):
         '''For convenience: write that one thing is equal to another (or more).
         This is because write_block( a == b ) often just writes "false"...'''
-        return self.write_environment( 'align*', '\n    &= '.join( latex(a) for a in args ) );
+        return self.write_environment( 'align*', '\n    &= '.join( self.latex(a) for a in args ) );
     def close(self):
         self._output.close()
         return self;
@@ -89,6 +93,7 @@ def latex_output( filename ):
 class wrap_latex( SageObject ):
     '''A helper class for inserting literal latex code into a context that requires
     an object with a latex() method'''
+    # maybe not needed any more?
     def __init__(self, text):
         self._str = text
     def _latex_(self):
@@ -105,6 +110,17 @@ class column_vector(SageObject): # v.column() is missing?
         return self.vector[i]
     def __iter__(self):
         return iter(self.vector)
+    def __getattr__(self, attr):
+        at = getattr( self.vector, attr )
+        if not callable( at ):
+            return at
+        def method_wrapper( *args, **named_args ):
+            rv = at( *args, **named_args )
+            if type(rv) == type( self.vector ):
+                return column_vector(rv)
+            return rv
+        return method_wrapper
     def _latex_(self):
         return ( '\\left(\\begin{array}{c}\n%s\n\\end{array}\\right)' %
           '\\\\\n'.join( '  %s' % latex(e) for e in self.vector ) )
+

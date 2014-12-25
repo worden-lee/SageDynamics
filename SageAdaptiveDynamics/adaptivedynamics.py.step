@@ -19,11 +19,11 @@ def limits(expr, lims):
     return expr
 
 class AdaptiveDynamicsException(Exception):
-    def __init__( self, message, latex_str ):
+    def __init__( self, message, latex_str=None ):
         self._latex_str = latex_str
         Exception.__init__( self, message )
 
-class AdaptiveDynamicsModel(ODE_system):
+class AdaptiveDynamicsModel(ODESystem):
     """Given a population dynamics model in which dynamics of population
     sizes are driven by certain parameters, if we suppose that some of those
     parameters are subject to mutation, we can construct an adaptive dynamics
@@ -36,7 +36,9 @@ class AdaptiveDynamicsModel(ODE_system):
     things, it needs to be able to solve the population dynamics' equilibrium
     symbolically, and it assumes there is a unique equilibrium.  It also
     doesn't handle branching points, extinctions, etc."""
-    def __init__(self, popdyn_model, phenotype_indexers, phenotype_dependencies={}, bindings={}):
+    def __init__(self, popdyn_model, phenotype_indexers,
+        equilibrium=None,
+        early_bindings=Bindings(), late_bindings=Bindings()):
         """Infer adaptive dynamics from population dynamics given an
         evolving phenotypic parameter that determines the variation in the
         relevant quantities in the population dynamics.
@@ -45,41 +47,69 @@ class AdaptiveDynamicsModel(ODE_system):
         phenotype_indexers: list of "indexers" for variables describing each
           population of creatures' character, which can change by a
           process of mutation and selection.
-        phenotype_dependencies: Whereas things that are simple variables in
+        equilibrium: Bindings mapping population dynamics state variables
+          to their equilibrium values.  If not supplied, the model's
+          stable nontrivial equilibrium is used.  If that's not unique,
+          an exception is raised.  Note that trying to find stable
+          equilibria can overwhelm the computer if parameters are unbound.
+        early_bindings: Whereas things that are simple variables in
           the population dynamics, say r_i, an intrinsic growth rate, now
           need to be treated as functions of phenotypic quantities, say
           r_i(u_i), this argument is a dict mapping variable names to their new
           functional representations, for instance
-          {'r_i':sage.symbolic.function_factory.function('r_i',u_i)}."""
+          {'r_i':sage.symbolic.function_factory.function('r_i',u_i)}.
+        late_bindings: In some cases you can just provide an early_bindings
+          that expands the parameters to their ultimate values, but in other
+          cases it's too complex for the equation solver to deal with those.
+          So you can provide a symbolic expression like r_i(u_i) in
+          early_bindings - that will be used during the adaptive dynamics
+          calculations - and then expand that out to the value of r_i in
+          late_bindings, and get the right answer without bogging the
+          computer down."""
         self._debug_output = latex_output_base( write_to_string() )
-        # before doing anything, change the dependent quantities from simple
-        # variables to functions.
-        popdyn_flow = dict( (k,apply(v,[],phenotype_dependencies))
-          for k,v in popdyn_model._flow.items() )
-        equil_nontrivial = popdyn_model.stable_nontrivial_equilibria()
-        # there should just be one nontrivial solution
-        # otherwise, we would have to handle all this more carefully
-        if len(equil_nontrivial) != 1:
-            self._debug_output.write( "All equilibria of population dynamics:" )
-            self._debug_output.write_block( popdyn_model.equilibria() )
-            raise AdaptiveDynamicsException( 'Population Dynamics does not have a unique stable nontrivial equilibrium', self._debug_output._output._str )
-        equil_soln = equil_nontrivial[0]
+        self._popdyn_model = popdyn_model
+        self._phenotype_indexers = phenotype_indexers
+        self._early_bindings = early_bindings
+        self._late_bindings = late_bindings
+        self.calculate_adaptive_dynamics()
+        """Provide a mapping from e.g. SR.symbol('Xhat_i') to the 
+        population dynamics equilibrium value of X_i."""
+        if equilibrium is None:
+            equilibria = self._popdyn_model.stable_nontrivial_equilibria()
+            # there should just be one nontrivial solution
+            # otherwise, we would have to handle all this more carefully
+            if len(equilibria) != 1:
+                self._debug_output.write( "All equilibria of population dynamics:" )
+                self._debug_output.write_block( self._popdyn_model.equilibria() )
+                raise AdaptiveDynamicsException( 'Population Dynamics does not have a unique stable nontrivial equilibrium', self._debug_output._output._str )
+            equilibrium = Bindings( equilibria[0] )
+            equilibrium += { hat(k):v for k,v in equilibrium.items() }
+        self._equilibrium = equilibrium
         self._debug_output.write( "Equilibrium of the population dynamics:" )
-        self._debug_output.write_block( equil_soln )
+        self._debug_output.write_block( self._equilibrium )
+        self._flow = dict( (k, equilibrium(v)) for k,v in self._flow.items() )
+        super(AdaptiveDynamicsModel, self).__init__( self._flow, list(self._flow.keys()),
+          bindings=late_bindings + popdyn_model._bindings + self._equilibrium )
+        self._debug_output.write( 'The adaptive dynamics comes out to' )
+        self._debug_output.write_block( self )
+        self._debug_output.close()
+        print self._debug_output._output._str
+    def calculate_adaptive_dynamics(self):
         # We get the invasion exponent for u_i by adding an extra population,
         # which will soon be asymptotically identical to u_i.
-        extended_system = deepcopy(popdyn_model)
-        extended_system.set_population_indices(popdyn_model._population_indices + ['i'])
-        #self._debug_output.write_block( extended_system )
+        self._extended_system = deepcopy(self._popdyn_model)
+        self._extended_system.set_population_indices(self._popdyn_model._population_indices + ['i'])
+        self._extended_system.bind_in_place( self._early_bindings )
+        #self._debug_output.write_block( self._extended_system )
         #self._debug_output.write( "And with bindings: " )
-        #self._debug_output.write_block(  popdyn_model._bindings )
-        extended_system = extended_system.bind(popdyn_model._bindings)
+        #self._debug_output.write_block(  self._popdyn_model._bindings )
+        #self._extended_system = self._extended_system.bind(self._popdyn_model._bindings)
         self._debug_output.write( "Original pop-dyn system: " )
-        self._debug_output.write_block( popdyn_model )
+        self._debug_output.write_block( self._popdyn_model )
         self._debug_output.write( "Extended pop-dyn system: " )
-        self._debug_output.write_block( extended_system )
-        X_i = extended_system._population_indexer['i']
-        dXi_dt = extended_system._flow[X_i]
+        self._debug_output.write_block( self._extended_system )
+        X_i = self._extended_system._population_indexer['i']
+        dXi_dt = self._extended_system._flow[X_i]
         # Now: The invasion exponent for u_i is 1/X_i dX_i/dt
         I_i = dXi_dt / X_i
         self._debug_output.write( 'The invasion rate for population $i$ is:\n\\begin{align*}\n',
@@ -90,38 +120,106 @@ class AdaptiveDynamicsModel(ODE_system):
         # The invasion exponent we want is lim_{u_i->u, X_i->0}dI/du_i
         self._debug_output.write( 'And the invasion exponent is\n\\begin{align*}\n', 
             '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = \\lim_{%s,%s\\to0}%s' %
-                (latex(u[j]), ','.join('%s\\to %s' % (latex(uu['i']),latex(uu[j])) for uu in phenotype_indexers),
-                 latex(X_i), latex(diff(I_i, u['i']))) for j in popdyn_model._population_indices
-                for u in phenotype_indexers ),
+                (latex(u[j]), ','.join('%s\\to %s' % (latex(uu['i']),latex(uu[j])) for uu in self._phenotype_indexers),
+                 latex(X_i), latex(diff(I_i, u['i']))) for j in self._popdyn_model._population_indices
+                for u in self._phenotype_indexers ),
             '.\n\\end{align*}\n')
-        dI_du = [diff(I_i,u['i']) for u in phenotype_indexers]
-        dI_du = [ dI_dui.subs(equil_soln) for dI_dui in dI_du ]
-        dI_du = [ (j, u[j], Xj, limits(dI_dui,
-              dict((uu['i'],uu[j]) for uu in phenotype_indexers)))
-            for j, Xj in zip(popdyn_model._population_indices,
-              popdyn_model.population_vars())
-            for u, dI_dui in zip(phenotype_indexers, dI_du) ]
+        dI_du = [diff(I_i,u['i']) for u in self._phenotype_indexers]
+        #dI_du = [ equilibrium(dI_dui) for dI_dui in dI_du ]
+        dI_du = [ (u[j], Xj, limits(dI_dui,
+              dict((uu['i'],uu[j]) for uu in self._phenotype_indexers)))
+            for j, Xj in zip(self._popdyn_model._population_indices,
+              self._popdyn_model.population_vars())
+            for u, dI_dui in zip(self._phenotype_indexers, dI_du) ]
         #print 'as u_i->u_*:\n', join( (" dI/d%s: %s" % (u_j, dI_duj)
         #    for u_j, X_j, dI_duj in dI_du), '\n')
-        dI_du = [ (j, u_j, X_j, dI_duj.limit(X_i = 0)) for j, u_j, X_j, dI_duj in dI_du ]
+        dI_du = [ (u_j, X_j, dI_duj.limit(X_i = 0)) for u_j, X_j, dI_duj in dI_du ]
         self._debug_output.write( 'Which comes out to\n\\begin{align*}\n', 
             '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = %s' %
-                (latex(u_j), latex(dI_duj)) for j, u_j, X_j, dI_duj in dI_du ),
+                (latex(u_j), latex(dI_duj)) for u_j, X_j, dI_duj in dI_du ),
             '.\n\\end{align*}\n')
         # The adaptive dynamics system is du/dt = \gamma \hat{X}_i dI/du.
         # This is a general adaptive dynamics for the one-species,
         # one-resource Mac/Lev system - we'll supply a specific mapping
         # from u to b, m, c at solve time.
-        self._S = dict( (u_j, dI_duj) for j, u_j, X_j, dI_duj in dI_du )
+        self._vars = [ u_j for u_j, X_j, dI_duj in dI_du ]
+        add_hats = self.add_hats()
+        self._S = dict( (u_j, add_hats(dI_duj)) for u_j, X_j, dI_duj in dI_du )
         self._debug_output.write( '\\[ ', 
             '\\mathbf S', latex( column_vector( [ u_j for u_j in self._S.keys() ] ) ), ' = ',
             latex( column_vector( [ dI_duj for dI_duj in self._S.values() ] ) ), ' \\]\n' )
         gamma = SR.var('gamma')
-        u_flow = dict( (u_j, gamma*equil_soln[X_j]*dI_duj)
-            for j, u_j, X_j, dI_duj in dI_du)
-        bindings=popdyn_model._bindings.merge(equil_soln).merge(bindings)
-        u_flow = dict( (k, bindings(v)) for k,v in u_flow.items() )
-        super(AdaptiveDynamicsModel, self).__init__( u_flow, list(u_flow.keys()),
-          bindings=bindings )
+        self._flow = dict( (u_j, gamma*add_hats(X_j*dI_duj))
+            for u_j, X_j, dI_duj in dI_du )
+    def add_hats(self):
+        """Provide a bindings to convert e.g. X_i to Xhat_i.  Should only
+        operate on the population dynamics state variables."""
+        try:
+            self._add_hats( self._time_variable )
+        except AttributeError:
+            self._add_hats = Bindings( dict( (v, hat(v)) for v in self._popdyn_model._vars ) )
+        return self._add_hats
+
+import numpy # do this now, not during compute_flow
+
+class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel ):
+    """Where AdaptiveDynamicsModel derives a closed expression for the
+    adaptive dynamics using an explicit solution to the population dynamics'
+    equilibrium condition, this class is appropriate when the population
+    dynamics equilibrium needs to be solved numerically.  It sets up the
+    apparatus for solving the equilibrium and plugging it into the AD
+    equations, and then does it just-in-time at each step of the integration."""
+    def __init__(self, popdyn_model, phenotype_indexers,
+        equilibrium_function=None, time_variable=SR.symbol('t'),
+        early_bindings=Bindings(), late_bindings=Bindings()):
+        """Infer adaptive dynamics from population dynamics given an
+        evolving phenotypic parameter that determines the variation in the
+        relevant quantities in the population dynamics.
+
+        popdyn_model: an object of class PopulationDynamicsModel
+        phenotype_indexers: list of "indexers" for variables describing each
+          population of creatures' character, which can change by a
+          process of mutation and selection.
+        equilibrium_function: function returning equilibrium bindings given
+          bound model.
+        early_bindings: Whereas things that are simple variables in
+          the population dynamics, say r_i, an intrinsic growth rate, now
+          need to be treated as functions of phenotypic quantities, say
+          r_i(u_i), this argument is a dict mapping variable names to their new
+          functional representations, for instance
+          {'r_i':sage.symbolic.function_factory.function('r_i',u_i)}."""
+        self._debug_output = latex_output_base( write_to_string() )
+        self._popdyn_model = popdyn_model
+        self._phenotype_indexers = phenotype_indexers
+        self._early_bindings = early_bindings
+        self._late_bindings = late_bindings
+        self._equilibrium_function = equilibrium_function
+        self.calculate_adaptive_dynamics()
+        # unlike AdaptiveDynamicsModel, don't include the equilibrium here,
+        # wait until compute_flow() to plug it in
+        super(NumericalAdaptiveDynamicsModel, self).__init__( list(self._flow.keys()),
+          time_variable = time_variable,
+          flow = self._flow,
+          bindings=late_bindings + popdyn_model._bindings )
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write_block( self )
+        self._debug_output.close()
+    def equilibrium_function( self, u_bindings ):
+        if self._equilibrium_function is not None:
+            return self._equilibrium_function( self, self._popdyn_model, u_bindings )
+        answer = None
+        for eq in self._popdyn_model.equilibria():
+            print 'eq:', eq
+            eq = Bindings( { k:u_bindings(v) for k,v in eq.items() } )
+            if any( eq(v) != 0 for v in self._popdyn_model.population_vars() ):
+                if answer is not None:
+                    raise AdaptiveDynamicsException( "Model has multiple nontrivial equilibria" )
+                answer = eq
+        if answer is None:
+            raise AdaptiveDynamicsException( "Could not find interior equilibrium" )
+	return Bindings( answer )
+    def compute_flow( self, u, t ):
+        u_bindings = Bindings( dict( zip( self._vars, u ) ) )
+        dudt = numpy.array( [ self.equilibrium_function( u_bindings( self._flow[v] ) ) for v in self._vars ], float )
+        print 'numpy array', dudt
+        return dudt
