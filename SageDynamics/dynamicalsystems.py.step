@@ -142,6 +142,9 @@ class Bindings(dict):
         other.update( self )
         other._function_bindings = deepcopy( self._function_bindings, _dict )
         return other
+    # todo: merge() is akin to ODEsystem's bind(): it produces a bound copy
+    # while bind() is akin to ODEsystem's bind_in_place(): it modifies self
+    # this is problematic
     def merge(self, other={}, **args):
         """Combine with another set of bindings.  We assume that self is the
         bindings that have already been applied, and the other bindings are
@@ -175,29 +178,29 @@ class FunctionBindings(Bindings):
     from other things.  I hope to find a better way, by formalizing the idea
     that parameters sometimes depend on other things."""
     def __init__(self, *args, **named_args):
-        for a in args:
+        for a in list( args ) + [ named_args ]:
+            # don't store as before-and-after functions due to
+            # function-pickling woes
+            # http://trac.sagemath.org/ticket/17558
+            # store as (function name, argument list): return value
+            # i.e. with no function objects stored
             try:
-                self.update(a) # works if it's a dict
-            except ValueError:
-                print 'Unrecognized initializer for bindings:', a
-        self.update(dict(**named_args))
-        for k,v in self.items():
-            try:
-                kk = function(k)
-                self[kk] = v
-                del self[k]
-            except TypeError: pass # if k is already a function
+                # if it's a FunctionBindings or other dict { (<name>,<args>): <expr> }
+                # it's tricky to exclude string-valued ks from this
+                def rterr(): raise TypeError
+                self.update( { (isinstance(k,tuple) and k or rterr()):v for k,v in a.items() } )
+            except (TypeError, ValueError):
+                try:
+                    # if it's a dict { <fn or name>: <fn or expr> }, including
+                    # the kind you would use with substitute_function(),
+                    # transform it to { (<name>,<args>):<expr> }
+                    self.update( { (str(k),v.arguments()):SR(v) for k,v in a.items() } )
+                except ValueError:
+                    print 'Unrecognized initializer for bindings:', a
     def __repr__(self):
         return super(Bindings,self).__repr__()
     def latex_inner(self):
-        return '\\\\\n'.join( '  %s(%s) &\\to %s' % ( latex(key), ','.join( latex(a) for a in val.args() ), latex( val( *val.args() ) ) ) for key, val in self.items() )
-    def munge_arities(self):
-        """Maybe this help with this fucking bullshit http://trac.sagemath.org/ticket/17503"""
-        for k,v in self.items():
-            if k.number_of_arguments() == 0:
-                self[ function(str(k),1) ] = v
-            else:
-                self[ function(str(k)) ] = v
+        return '\\\\\n'.join( '  %s(%s) &\\to %s' % ( latex(key[0]), ','.join( latex(a) for a in key[1] ), latex( val ) ) for key, val in self.items() )
     def substitute(self, expr):
         """Apply the bindings to an expression"""
         try:
@@ -208,24 +211,26 @@ class FunctionBindings(Bindings):
             # evade confusion between function('f', nargs=1)
             # and function('f'), since they get interchanged by
             # maxima and pickle operations
-            expr = expr.substitute_function( function(str(k),nargs=1), v.function() )
-            expr = expr.substitute_function( function(str(k)), v.function() )
+            # http://trac.sagemath.org/ticket/17503
+            expr = expr.substitute_function( function(k[0]), v.function( *k[1] ) )
+            expr = expr.substitute_function( function(k[0], nargs=len(k[1])), v.function( *k[1] ) )
             #expr = expr.substitute_function(k,v)
             #print ' => ', expr
         return expr
     def __deepcopy__(self, _dict):
         return FunctionBindings( self )
     def merge(self, other={}, **args):
-        return self.wrap().bind(other, **args)
-    def wrap(self):
-        return Bindings(self)
+        return Bindings(self).bind(other, **args)
     def merge_into_function_bindings(self, other):
-        """To merge FunctionBindings and regular bindings together."""
+        """Merge this FunctionBindings into other bindings, in place.
+        
+        self is a FunctionBindings while other is a regular Bindings.
+        this function provides duck typing because Bindings doesn't have it"""
         #print 'merge',self,'into',other
         other._function_bindings.update(self)
     def apply_bindings(self, bindings):
         for k, v in self.items():
-            self[k] = bindings(v).function(*v.args())
+            self[k] = bindings(v)
 
 class ODESystem(SageObject):
     """A system of ordinary differential equations.
