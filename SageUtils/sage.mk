@@ -21,4 +21,7 @@ endif
 sage :
 	sage
 
+sage-gdb :
+	sage -gdb
+
 .PHONY: sage

@@ -119,7 +119,11 @@ class Bindings(dict):
         return '%s%s' % ( ' \\\\\n'.join( '  %s &\\to %s' % (latex(key), latex(val)) for key, val in self.items() ), flx )
     def substitute(self, expr):
         """Apply the bindings to an expression"""
-        # in case it's a matrix or something
+        # if it's a Bindings or dict, apply ourself to all the values
+        try:
+            return { k:self.substitute(v) for k,v in expr.items() }
+        except (AttributeError, ValueError): pass
+        # or if it's a vector or something, apply to all entries
         try:
             return expr.apply_map( lambda x : self.substitute( x ) )
         except AttributeError: pass
@@ -187,6 +191,13 @@ class FunctionBindings(Bindings):
         return super(Bindings,self).__repr__()
     def latex_inner(self):
         return '\\\\\n'.join( '  %s(%s) &\\to %s' % ( latex(key), ','.join( latex(a) for a in val.args() ), latex( val( *val.args() ) ) ) for key, val in self.items() )
+    def munge_arities(self):
+        """Maybe this help with this fucking bullshit http://trac.sagemath.org/ticket/17503"""
+        for k,v in self.items():
+            if k.number_of_arguments() == 0:
+                self[ function(str(k),1) ] = v
+            else:
+                self[ function(str(k)) ] = v
     def substitute(self, expr):
         """Apply the bindings to an expression"""
         try:
@@ -194,7 +205,12 @@ class FunctionBindings(Bindings):
         except AttributeError: pass
         #print 'substitute ', expr,' + ', self
         for k,v in self.items():
-            expr = expr.substitute_function(k,v)
+            # evade confusion between function('f', nargs=1)
+            # and function('f'), since they get interchanged by
+            # maxima and pickle operations
+            expr = expr.substitute_function( function(str(k),nargs=1), v.function() )
+            expr = expr.substitute_function( function(str(k)), v.function() )
+            #expr = expr.substitute_function(k,v)
             #print ' => ', expr
         return expr
     def __deepcopy__(self, _dict):
@@ -270,18 +286,18 @@ class ODESystem(SageObject):
         binding = Bindings( *bindings )
         self._flow = dict( (k, binding(v)) for k,v in self._flow.items() )
         self._bindings = self._bindings.merge(binding)
-    def bind(self, bindings):
+    def bind(self, *bindings):
         """If you create a system with various symbolic parameters, like
         dy/dt = ay^2 + by + c, or something, you can't numerically 
         integrate it as is, you have to give values to parameters a, b, and c.
         This method gives you a system just like self, but with parameters
         bound to the values provided.
 
-        bindings: a Bindings object recording values for some variables and/or
+        bindings: Bindings objects recording values for some variables and/or
         functions.
         """
         bound = deepcopy( self )
-        bound.bind_in_place( bindings )
+        bound.bind_in_place( *bindings )
         return bound
     def solve(self, initial_conditions, end_points=20, step=0.1):
         """Use a numerical solver to find a concrete trajectory of the system.
@@ -332,11 +348,28 @@ class ODESystem(SageObject):
         if (filename != ''):
             p.save(filename)
         return p
+    def add_hats(self, expression=None):
+        """convert e.g. X_i to Xhat_i.  Should only
+        operate on the state variables."""
+        try:
+            self._add_hats( self._time_variable )
+        except AttributeError:
+            self._add_hats = Bindings( { v:hat(v) for v in self._vars } )
+        # self.add_hats( expression ) returns hat-added expression
+        if expression is not None:
+            return self._add_hats( expression )
+        # self.add_hats() returns the add-hats bindings
+        return self._add_hats
+    def remove_hats(self):
+        return Bindings( { v:k for k,v in self.add_hats().items() } )
     def equilibria(self):
         equil_eqns = [ 0 == rhs for rhs in self._flow.values() ]
-        return solve( equil_eqns, *self._vars, solution_dict=True )
+        solns = solve( equil_eqns, *self._vars, solution_dict=True )
+        add_hats = self.add_hats()
+        equilibria = [ { add_hats(k):add_hats(v) for k,v in soln.items() } for soln in solns ]
+        return equilibria
     def interior_equilibria(self):
-        return [ eq for eq in self.equilibria() if all( eq[x] != 0 for x in self._vars ) ]
+        return [ eq for eq in self.equilibria() if all( eq[hat(x)] != 0 for x in self._vars ) ]
     def jacobian(self, at=None):
         j = dict( ( ki, dict( ( kj, diff( self._flow[ki], kj ) ) for kj in self._vars ) ) for ki in self._vars )
         try:
@@ -348,13 +381,17 @@ class ODESystem(SageObject):
         jdict = self.jacobian(at)
         return matrix( [ [ jdict[ki][kj] for kj in self._vars ] for ki in self._vars ] )
     def is_stable(self, matrix):
+        """In an ODE system stability means Re(eigenvalue) < 0.  In a
+        difference equation it would be different..."""
         for e in matrix.eigenvalues():
             if real( e ) >= 0: return false
         return true
     def stable_equilibria(self):
-        return [ eq for eq in self.equilibria() if self.is_stable( self.jacobian_matrix( eq ) ) ]
+        remove_hats = self.remove_hats()
+        return [ eq for eq in self.equilibria() if self.is_stable( self.jacobian_matrix( { remove_hats(k):v for k,v in eq.items() } ) ) ]
     def stable_interior_equilibria(self):
-        return [ eq for eq in self.interior_equilibria() if self.is_stable( self.jacobian_matrix( eq ) ) ]
+        remove_hats = self.remove_hats()
+        return [ eq for eq in self.interior_equilibria() if self.is_stable( self.jacobian_matrix( { remove_hats(k):v for k,v in eq.items() } ) ) ]
     def plot_bifurcation_diagram( self, ind_range, dep_range, filename=None, xlabel=None, ylabel=None, **args ):
         (p, pmin, pmax) = ind_range
         (y, ymin, ymax) = dep_range
@@ -383,7 +420,8 @@ class ODESystem(SageObject):
                 # now these are places where the dominant eigenvalue changes sign
             return list( bif_points )
         equilibria_b = self.equilibria()
-        jacobians_b = [ self.jacobian_matrix( eq ) for eq in equilibria_b ]
+        remove_hats = self.remove_hats()
+        jacobians_b = [ self.jacobian_matrix( { remove_hats(k):v for k,v in eq.items() } ) for eq in equilibria_b ]
         eigenvalues_b = [ j.eigenvalues() for j in jacobians_b ]
         bif_points = bifurcation_points( eigenvalues_b, p )
         # plot!
@@ -438,10 +476,13 @@ class NumericalODESystem( ODESystem ):
         from sage.misc.misc import xsrange
         from sage.plot.plot_field import PlotField
         from sage.plot.misc import setup_for_eval_on_grid
-        _, rangez = setup_for_eval_on_grid( [], ( xlims, ylims ), options['plot_points'] )
-        # ??
-        print _
-        xs, ys, dxs, dyz = [], [], [], []
+        xlims = tuple( self._bindings.substitute( v ) for v in xlims )
+        ylims = tuple( self._bindings.substitute( v ) for v in ylims )
+        xvar, yvar = ( SR(xlims[0]), SR(ylims[0]) )
+        if vf is None:
+            vf = [ self._flow[v] for v in [ xvar, yvar ] ]
+        _, rangez = setup_for_eval_on_grid( [ xvar, yvar ], ( xlims, ylims ), options['plot_points'] )
+        xs, ys, dxs, dys = [], [], [], []
         for x in xsrange( *rangez[0], include_endpoint=True ):
             for y in xsrange( *rangez[1], include_endpoint=True ):
                 try:
@@ -457,6 +498,9 @@ class NumericalODESystem( ODESystem ):
         g = Graphics()
         g._set_extra_kwds( Graphics._extract_kwds_for_show( options ) )
         g.add_primitive( PlotField( xs, ys, dxs, dys, options ) )
+        if (xlabel == -1): xlabel = xvar
+        if (ylabel == -1): ylabel = yvar
+        g.axes_labels( ['$%s$'%latex(v) for v in (xlabel,ylabel)] )
         return g
 
 class indexer(SageObject):
@@ -534,15 +578,15 @@ class PopulationDynamicsSystem(ODESystem):
         self._population_indices = xi
         self._flow = self.flow()
         self._vars = self._nonpop_vars + self.population_vars()
-        #print "setting flow:", self._flow
         #self._flow = dict( (k,self._bindings(v)) for k,v in self._flow.items() )
-        #print "  flow =>", self._flow
     # subclasses have to provide the flow
     def flow(self): pass
     def nontrivial_equilibria(self):
-        return [ eq for eq in self.equilibria() if sum( eq[x] for x in self.population_vars() ) != 0 ]
+        equilibria = self.equilibria()
+        return [ eq for eq in equilibria if sum( eq[hat(x)] for x in self.population_vars() ) != 0 ]
     def stable_nontrivial_equilibria(self):
-        return [ eq for eq in self.nontrivial_equilibria() if self.is_stable( self.jacobian_matrix( eq ) ) ]
+        remove_hats = self.remove_hats()
+        return [ eq for eq in self.nontrivial_equilibria() if self.is_stable( self.jacobian_matrix( { remove_hats(k):v for k,v in eq.items() } ) ) ]
     def plot_ZNGIs( self, xlims, ylims, vars=None, **args ):
         """Plot populations' zero net growth isoclines, using ODESystem's
         plot_isoclines()."""

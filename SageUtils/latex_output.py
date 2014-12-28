@@ -85,6 +85,7 @@ class write_to_string:
     def write(self, arg):
         self._str += arg
     def close(self): pass
+    def flush(self): pass
 
 def latex_output( filename ):
     '''Create a latex_output_file object writing to the specified filename'''
@@ -110,6 +111,8 @@ class column_vector(SageObject): # v.column() is missing?
         return self.vector[i]
     def __iter__(self):
         return iter(self.vector)
+    def __add__(self, other):
+        return column_vector( self.vector.__add__( other.vector ) )
     def __getattr__(self, attr):
         at = getattr( self.vector, attr )
         if not callable( at ):
@@ -123,4 +126,7 @@ class column_vector(SageObject): # v.column() is missing?
     def _latex_(self):
         return ( '\\left(\\begin{array}{c}\n%s\n\\end{array}\\right)' %
           '\\\\\n'.join( '  %s' % latex(e) for e in self.vector ) )
+    def transpose(self):
+        return self.vector
+
 

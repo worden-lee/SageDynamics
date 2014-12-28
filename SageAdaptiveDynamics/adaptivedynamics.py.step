@@ -72,7 +72,7 @@ class AdaptiveDynamicsModel(ODESystem):
         self._early_bindings = early_bindings
         self._late_bindings = late_bindings
         self.calculate_adaptive_dynamics()
-        """Provide a mapping from e.g. SR.symbol('Xhat_i') to the 
+        """Provide a mapping from e.g. SR.symbol('Xhat_i') to the
         population dynamics equilibrium value of X_i."""
         if equilibrium is None:
             equilibria = self._popdyn_model.stable_nontrivial_equilibria()
@@ -83,13 +83,18 @@ class AdaptiveDynamicsModel(ODESystem):
                 self._debug_output.write_block( self._popdyn_model.equilibria() )
                 raise AdaptiveDynamicsException( 'Population Dynamics does not have a unique stable nontrivial equilibrium', self._debug_output._output._str )
             equilibrium = Bindings( equilibria[0] )
-            equilibrium += { hat(k):v for k,v in equilibrium.items() }
+            #equilibrium += { hat(k):v for k,v in equilibrium.items() }
         self._equilibrium = equilibrium
         self._debug_output.write( "Equilibrium of the population dynamics:" )
         self._debug_output.write_block( self._equilibrium )
         self._flow = dict( (k, equilibrium(v)) for k,v in self._flow.items() )
         super(AdaptiveDynamicsModel, self).__init__( self._flow, list(self._flow.keys()),
           bindings=late_bindings + popdyn_model._bindings + self._equilibrium )
+        # after the late bindings it might need another rinse cycle in
+        # maxima to resolve the limits
+        #print 'before maxima rinse', self._vars[0], '=>', self._flow[self._vars[0]]
+        #self._flow = { k:maxima(repr(v)) for k,v in self._flow._items() }
+        #print 'and after:', self._vars[0], '=>', self._flow[self._vars[0]]
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write_block( self )
         self._debug_output.close()
@@ -143,7 +148,7 @@ class AdaptiveDynamicsModel(ODESystem):
         # one-resource Mac/Lev system - we'll supply a specific mapping
         # from u to b, m, c at solve time.
         self._vars = [ u_j for u_j, X_j, dI_duj in dI_du ]
-        add_hats = self.add_hats()
+        add_hats = self._popdyn_model.add_hats()
         self._S = dict( (u_j, add_hats(dI_duj)) for u_j, X_j, dI_duj in dI_du )
         self._debug_output.write( '\\[ ', 
             '\\mathbf S', latex( column_vector( [ u_j for u_j in self._S.keys() ] ) ), ' = ',
@@ -151,14 +156,6 @@ class AdaptiveDynamicsModel(ODESystem):
         gamma = SR.var('gamma')
         self._flow = dict( (u_j, gamma*add_hats(X_j*dI_duj))
             for u_j, X_j, dI_duj in dI_du )
-    def add_hats(self):
-        """Provide a bindings to convert e.g. X_i to Xhat_i.  Should only
-        operate on the population dynamics state variables."""
-        try:
-            self._add_hats( self._time_variable )
-        except AttributeError:
-            self._add_hats = Bindings( dict( (v, hat(v)) for v in self._popdyn_model._vars ) )
-        return self._add_hats
 
 import numpy # do this now, not during compute_flow
 
@@ -197,10 +194,15 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         self.calculate_adaptive_dynamics()
         # unlike AdaptiveDynamicsModel, don't include the equilibrium here,
         # wait until compute_flow() to plug it in
-        super(NumericalAdaptiveDynamicsModel, self).__init__( list(self._flow.keys()),
+        super(NumericalAdaptiveDynamicsModel, self).__init__(
+          self._vars,
           time_variable = time_variable,
           flow = self._flow,
           bindings=late_bindings + popdyn_model._bindings )
+        # give the AD expressions another rinse through maxima
+        # post-late-bindings, because there might be limits that haven't
+        # been properly resolved
+        self._flow = { k:SR(maxima(repr(v))) for k,v in self._flow.items() }
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write_block( self )
         self._debug_output.close()
@@ -209,7 +211,6 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
             return self._equilibrium_function( self, self._popdyn_model, u_bindings )
         answer = None
         for eq in self._popdyn_model.equilibria():
-            print 'eq:', eq
             eq = Bindings( { k:u_bindings(v) for k,v in eq.items() } )
             if any( eq(v) != 0 for v in self._popdyn_model.population_vars() ):
                 if answer is not None:
@@ -219,7 +220,43 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
             raise AdaptiveDynamicsException( "Could not find interior equilibrium" )
 	return Bindings( answer )
     def compute_flow( self, u, t ):
+        #print 'compute_flow:', u, t
         u_bindings = Bindings( dict( zip( self._vars, u ) ) )
-        dudt = numpy.array( [ self.equilibrium_function( u_bindings( self._flow[v] ) ) for v in self._vars ], float )
-        print 'numpy array', dudt
+        eq = self.equilibrium_function( u_bindings )
+        #print 'flow 0:', self._flow[self._vars[0]]
+        #print 'eq flow:', eq( self._flow[self._vars[0]] )
+        #print 'u eq flow:', u_bindings( eq( self._flow[self._vars[0]] ) )
+        sys.stdout.flush()
+        dudt = numpy.array( [ u_bindings( eq( self._flow[v] ) ) for v in self._vars ], float )
+        #print 'numpy array', dudt
         return dudt
+
+# using this for the above equilibrium_function argument
+# gives you adaptive dynamics using the unique interior equilibrium
+# of the population dynamics (to be precise: equilibrium for which all
+# population variables are nonzero.  It doesn't care about other state
+# variables).  It will throw an exception if there isn't exactly one
+# interior equilibrium.
+def find_interior_equilibrium( ad, pd, u_bindings ):
+    if not hasattr( find_interior_equilibrium, 'cache' ):
+        find_interior_equilibrium.cache = {}
+    if ad not in find_interior_equilibrium.cache:
+        xs = [ hat(x) for x in pd.population_vars() ]
+        #print 'create equilibrium function cache'
+        #print 'ad early bindings', ad._early_bindings
+        #print 'ad bindings', ad._bindings
+        equilibria = [ { k:ad._bindings( v ) for k,v in eq.items() } for eq in pd.equilibria() ]
+        #print 'equilibria', equilibria
+        find_interior_equilibrium.cache[ad] = (equilibria, xs)
+    equilibria, xs = find_interior_equilibrium.cache[ad]
+    answer = None
+    for eq in equilibria:
+        if any( u_bindings(eq[x]) == 0 for x in xs ): continue
+        if answer is not None:
+            raise AdaptiveDynamicsException( 'Population dynamics has multiple interior equilibria' )
+        answer = u_bindings( eq )
+    if answer is not None:
+        #print 'equilibrium:', answer
+        return Bindings( answer )
+    raise AdaptiveDynamicsException( 'Failed to find interior equilibrium' )
+
