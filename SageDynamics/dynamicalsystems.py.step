@@ -6,11 +6,23 @@ from string import join
 from sage.misc.latex import _latex_file_
 latex.add_to_preamble('\\usepackage{amsmath}')
 
+# =============================================================================
+# Core functions and classes for dynamical systems processing in Sage
+# =============================================================================
+
+# First helper functions and classes
+
 def hat(v):
     """little utility function to add a hat to a Sage variable, e.g.
     make X_i into \hat{X}_i."""
-    if not v.is_symbol():
-        raise ValueError( str(v) + ' is not a symbol' )
+    try:
+        # is it a symbol?
+        if not v.is_symbol():
+            # no, it's a more complex expression
+            raise ValueError( str(v) + ' is not a symbol' )
+    except AttributeError:
+        # it's a string
+        v = SR.symbol(v)
     import re
     name = re.sub( '^([^_]*)(.*?)$', r'\g<1>hat\g<2>', str(v) )
     latex_name = re.sub( r'^([^_]*)(.*?)$', r'\hat{\g<1>}\g<2>', latex(v) )
@@ -83,7 +95,11 @@ class Bindings(dict):
     When you have an ODE system, for example, du/dt = a - bu^2,
     and you apply the bindings {a:1, b:2}, you get du/dt = 1 - 2u^2.
     The former is better for working with symbolically, but you need
-    the latter to integrate and get a numeric trajectory."""
+    the latter to integrate and get a numeric trajectory.
+
+    We also represent equilibria using bindings, like {hat(u): sqrt(2)/2}.
+    In the future we may use them for the ODE's flow as well, e.g. {u: 1-2*u^2}.
+    """
     def __init__(self, *args, **named_args):
         #print 'Bindings:__init__', ('args = ', args,
         #    ', named_args =', dict(**named_args))
@@ -145,14 +161,6 @@ class Bindings(dict):
     # todo: merge() is akin to ODEsystem's bind(): it produces a bound copy
     # while bind() is akin to ODEsystem's bind_in_place(): it modifies self
     # this is problematic
-    def merge(self, other={}, **args):
-        """Combine with another set of bindings.  We assume that self is the
-        bindings that have already been applied, and the other bindings are
-        being applied afterward.  Thus self's bindings take priority, if there's
-        any potential conflict."""
-        return deepcopy(self).bind(other, **args)
-    def __add__(self, other):
-        return self.merge(other)
     def bind(self, *args, **named_args):
         #print 'merge bindings:', self, ',', list(*args), ', ', dict(**named_args)
         other = Bindings(*args, **named_args)
@@ -165,6 +173,14 @@ class Bindings(dict):
             other._function_bindings.merge_into_function_bindings(self)
         self.apply_to_self()
         return self
+    def merge(self, other={}, **args):
+        """Combine with another set of bindings.  We assume that self is the
+        bindings that have already been applied, and the other bindings are
+        being applied afterward.  Thus self's bindings take priority, if there's
+        any potential conflict."""
+        return deepcopy(self).bind(other, **args)
+    def __add__(self, other):
+        return self.merge(other)
     def apply_to_self(self):
         """after merging bindings together, we have to apply the bindings to
         each other so that all substitutions get done in a single pass"""
@@ -231,6 +247,55 @@ class FunctionBindings(Bindings):
     def apply_bindings(self, bindings):
         for k, v in self.items():
             self[k] = bindings(v)
+
+class indexer(SageObject):
+    """A little object that behaves like a dictionary of variables,
+    but generates 'entries' according to a formula instead of storing
+    them.  Used to fill in things like b_1 for population models.
+
+    f: if f is a string, the indexer constructs an expression "f_i".
+       if f is a function, the indexer uses the value of f(i).
+       In either case, if the result is a string, it parses it into
+       a sage expression object."""
+    def __init__(self, f):
+        self._f = f
+    def __getitem__(self, i):
+        try:
+            return symbolic_expression(self._f(i))
+        except TypeError:
+            try:
+                return self._f(i)
+            except TypeError:
+                return symbolic_expression("%s_%s" % (self._f,i))
+
+class indexer_2d(indexer):
+    """Instead of mapping i |-> x_i, this does a 2-step mapping
+    i |-> j |-> x_i_j.  That is, indexer_2d('x')[i][j] produces x_i_j."""
+    def __getitem__(self, i):
+        class subindexer(indexer):
+            def __init__(self, f, i):
+                self._f = f
+                self._i = i
+            def __getitem__(self, j):
+                return SR.symbol( '%s_%s_%s' % (self._f, self._i, j),
+                    latex_name='%s_{%s%s}' % (self._f, self._i, j) )
+        return subindexer( self._f, i )
+
+class indexer_2d_reverse(indexer_2d):
+    """Just like indexer_2d but maps j |-> i |-> x_i_j rather than to
+    x_j_i as the other one would do.  Useful when you want a way to
+    generate all x_i_j for a given j, as I do."""
+    def __getitem__(self, j):
+        class subindexer(indexer):
+            def __init__(self, f, j):
+                self._f = f
+                self._j = j
+            def __getitem__(self, i):
+                return SR.symbol( '%s_%s_%s' % (self._f, i, self._j ),
+                    latex_name='%s_{%s%s}' % (self._f, i, self._j ) )
+        return subindexer( self._f, j )
+
+# And now the dynamical systems classes.
 
 class ODESystem(SageObject):
     """A system of ordinary differential equations.
@@ -481,6 +546,7 @@ class NumericalODESystem( ODESystem ):
         from sage.misc.misc import xsrange
         from sage.plot.plot_field import PlotField
         from sage.plot.misc import setup_for_eval_on_grid
+        import numpy
         xlims = tuple( self._bindings.substitute( v ) for v in xlims )
         ylims = tuple( self._bindings.substitute( v ) for v in ylims )
         xvar, yvar = ( SR(xlims[0]), SR(ylims[0]) )
@@ -497,7 +563,6 @@ class NumericalODESystem( ODESystem ):
                     dxs.append( v[0] )
                     dys.append( v[1] )
                 except: pass
-        import numpy
         dxs = numpy.ma.masked_invalid( numpy.array( dxs, dtype=float ) )
         dys = numpy.ma.masked_invalid( numpy.array( dys, dtype=float ) )
         g = Graphics()
@@ -507,53 +572,6 @@ class NumericalODESystem( ODESystem ):
         if (ylabel == -1): ylabel = yvar
         g.axes_labels( ['$%s$'%latex(v) for v in (xlabel,ylabel)] )
         return g
-
-class indexer(SageObject):
-    """A little object that behaves like a dictionary of variables,
-    but generates 'entries' according to a formula instead of storing
-    them.  Used to fill in things like b_1 for population models.
-
-    f: if f is a string, the indexer constructs an expression "f_i".
-       if f is a function, the indexer uses the value of f(i).
-       In either case, if the result is a string, it parses it into
-       a sage expression object."""
-    def __init__(self, f):
-        self._f = f
-    def __getitem__(self, i):
-        try:
-            return symbolic_expression(self._f(i))
-        except TypeError:
-            try:
-                return self._f(i)
-            except TypeError:
-                return symbolic_expression("%s_%s" % (self._f,i))
-
-class indexer_2d(indexer):
-    """Instead of mapping i |-> x_i, this does a 2-step mapping
-    i |-> j |-> x_i_j.  That is, indexer_2d('x')[i][j] produces x_i_j."""
-    def __getitem__(self, i):
-        class subindexer(indexer):
-            def __init__(self, f, i):
-                self._f = f
-                self._i = i
-            def __getitem__(self, j):
-                return SR.symbol( '%s_%s_%s' % (self._f, self._i, j),
-                    latex_name='%s_{%s%s}' % (self._f, self._i, j) )
-        return subindexer( self._f, i )
-
-class indexer_2d_reverse(indexer_2d):
-    """Just like indexer_2d but maps j |-> i |-> x_i_j rather than to
-    x_j_i as the other one would do.  Useful when you want a way to
-    generate all x_i_j for a given j, as I do."""
-    def __getitem__(self, j):
-        class subindexer(indexer):
-            def __init__(self, f, j):
-                self._f = f
-                self._j = j
-            def __getitem__(self, i):
-                return SR.symbol( '%s_%s_%s' % (self._f, i, self._j ),
-                    latex_name='%s_{%s%s}' % (self._f, i, self._j ) )
-        return subindexer( self._f, j )
 
 class PopulationDynamicsSystem(ODESystem):
     """Specialization of ODESystem for population dynamics systems"""

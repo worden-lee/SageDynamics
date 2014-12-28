@@ -89,7 +89,7 @@ class AdaptiveDynamicsModel(ODESystem):
         self._debug_output.write_block( self._equilibrium )
         self._flow = dict( (k, equilibrium(v)) for k,v in self._flow.items() )
         super(AdaptiveDynamicsModel, self).__init__( self._flow, list(self._flow.keys()),
-          bindings=late_bindings + popdyn_model._bindings + self._equilibrium )
+          bindings=early_bindings + late_bindings + popdyn_model._bindings + self._equilibrium )
         # after the late bindings it might need another rinse cycle in
         # maxima to resolve the limits
         #print 'before maxima rinse', self._vars[0], '=>', self._flow[self._vars[0]]
@@ -198,7 +198,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
           self._vars,
           time_variable = time_variable,
           flow = self._flow,
-          bindings=late_bindings + popdyn_model._bindings )
+          bindings=early_bindings + late_bindings + popdyn_model._bindings )
         # give the AD expressions another rinse through maxima
         # post-late-bindings, because there might be limits that haven't
         # been properly resolved
@@ -226,7 +226,9 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         #print 'flow 0:', self._flow[self._vars[0]]
         #print 'eq flow:', eq( self._flow[self._vars[0]] )
         #print 'u eq flow:', u_bindings( eq( self._flow[self._vars[0]] ) )
-        sys.stdout.flush()
+        #sys.stdout.flush()
+        if any( eq( hat(x) ) <= 0 for x in self._popdyn_model.population_vars() ):
+             raise AdaptiveDynamicsException( 'Inviable population dynamics equilibrium in compute_flow' )
         dudt = numpy.array( [ u_bindings( eq( self._flow[v] ) ) for v in self._vars ], float )
         #print 'numpy array', dudt
         return dudt
