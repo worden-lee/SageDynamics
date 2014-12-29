@@ -1,0 +1,6 @@
+SageDynamics/dynamicalsystems.py
+SageAdaptiveDynamics/adaptivedynamics.py
+*.pyc
+*.py.mk
+GNUmakefile
+.workingwiki
