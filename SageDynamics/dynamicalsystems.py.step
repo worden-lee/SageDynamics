@@ -1,4 +1,3 @@
-# requires: $(SageAdaptiveDynamics)/adaptivedynamics.py
 """Dynamical systems classes"""
 
 from sage.all import *
@@ -11,6 +10,11 @@ latex.add_to_preamble('\\usepackage{amsmath}')
 # =============================================================================
 
 # First helper functions and classes
+
+class DynamicsException(Exception):
+    def __init__( self, message, latex_str=None ):
+        self._latex_str = latex_str
+        Exception.__init__( self, message )
 
 def hat(v):
     """little utility function to add a hat to a Sage variable, e.g.
@@ -188,6 +192,14 @@ class Bindings(dict):
             self[k] = self.substitute(v)
         self._function_bindings.apply_bindings(self)
 
+# see http://trac.sagemath.org/ticket/17553
+# limit() and substitute_function() don't play well together.
+# Once maxima returns a formal limit, it never gets re-evaluated
+# even when the limit can be easily taken.  This re-evaluates them.
+limop = limit( SR('f(x)'), x=0 ).operator()
+def simplify_limits( expr ):
+    return expr.substitute_function( limop, maxima_calculus.sr_limit )
+
 from sage.symbolic.function_factory import function
 class FunctionBindings(Bindings):
     """I am annoyed that we have to substitute functions in a different way
@@ -232,14 +244,14 @@ class FunctionBindings(Bindings):
             expr = expr.substitute_function( function(k[0], nargs=len(k[1])), v.function( *k[1] ) )
             #expr = expr.substitute_function(k,v)
             #print ' => ', expr
-        return expr
+        return simplify_limits( expr )
     def __deepcopy__(self, _dict):
         return FunctionBindings( self )
     def merge(self, other={}, **args):
         return Bindings(self).bind(other, **args)
     def merge_into_function_bindings(self, other):
         """Merge this FunctionBindings into other bindings, in place.
-        
+	
         self is a FunctionBindings while other is a regular Bindings.
         this function provides duck typing because Bindings doesn't have it"""
         #print 'merge',self,'into',other
@@ -338,7 +350,7 @@ class ODESystem(SageObject):
         return other
     def _latex_(self):
         """Output the system as a system of differential equations in LaTeX form"""
-        return '\\begin{align*}\n' + '\\\\\n'.join( 
+        return '\\begin{align*}\n' + '\\\\\n'.join(
              r'\frac{d%s}{d%s} &= %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
                 for v in self._vars ) + '\n\\end{align*}'
     def write_latex(self, filename):
@@ -358,7 +370,7 @@ class ODESystem(SageObject):
         self._bindings = self._bindings.merge(binding)
     def bind(self, *bindings):
         """If you create a system with various symbolic parameters, like
-        dy/dt = ay^2 + by + c, or something, you can't numerically 
+        dy/dt = ay^2 + by + c, or something, you can't numerically
         integrate it as is, you have to give values to parameters a, b, and c.
         This method gives you a system just like self, but with parameters
         bound to the values provided.
@@ -432,11 +444,14 @@ class ODESystem(SageObject):
         return self._add_hats
     def remove_hats(self):
         return Bindings( { v:k for k,v in self.add_hats().items() } )
-    def equilibria(self):
-        equil_eqns = [ 0 == rhs for rhs in self._flow.values() ]
-        solns = solve( equil_eqns, *self._vars, solution_dict=True )
+    def equilibrium_vars(self):
         add_hats = self.add_hats()
-        equilibria = [ { add_hats(k):add_hats(v) for k,v in soln.items() } for soln in solns ]
+        return [ add_hats(v) for v in self._vars ]
+    def equilibria(self):
+        add_hats = self.add_hats()
+        equil_eqns = [ 0 == add_hats(rhs) for rhs in self._flow.values() ]
+        equilibria = solve( equil_eqns, *self.equilibrium_vars(), solution_dict=True )
+        #equilibria = [ { k:(v) for k,v in soln.items() } for soln in solns ]
         return equilibria
     def interior_equilibria(self):
         return [ eq for eq in self.equilibria() if all( eq[hat(x)] != 0 for x in self._vars ) ]
@@ -511,6 +526,24 @@ class ODESystem(SageObject):
             bp.save( filename )
         return bp
 
+# used by NumericalODESystem.solve()
+# unlike the standard odeint(), this fails when the du/dt function
+# raises and exception
+# http://www.pythoneye.com/212_16439560/
+import scipy.integrate, numpy
+def fake_odeint(func, y0, t, args=None, Dfun=None):
+    ig = scipy.integrate.ode(func, Dfun)
+    ig.set_integrator('lsoda', method='adams')
+    ig.set_initial_value(y0, t=t[0])
+    if not isinstance(args, (tuple,list)): args = (args,)
+    ig.set_f_params(*args)
+    y = []
+    for tt in t[1:]:
+        #if not ig.successful():
+        #    break
+        y.append(ig.integrate(tt))
+    return numpy.array(y)
+
 class NumericalODESystem( ODESystem ):
     """Where the base ODESystem has a system of Sage expressions to
     specify its flow, this uses an instance method, operating on
@@ -529,24 +562,63 @@ class NumericalODESystem( ODESystem ):
         if self._flow is not None:
             self._flow = dict( (k, bindings(v)) for k,v in self._flow.items() )
     def solve(self, initial_conditions, end_points=20, step=0.1):
-        import numpy, scipy.integrate
         initial_t = initial_conditions[0]
         initial_state = numpy.array( initial_conditions[1:], float )
         times = numpy.arange( initial_t, end_points, step )
-        soln = scipy.integrate.odeint( lambda y, t: self.compute_flow( y, t ), initial_state, times )
+        def cf(t, y, s):
+            return list( s.compute_flow(y, t) )
+        #soln = fake_odeint( lambda y, t, _self=self: _self.compute_flow( y, t ), initial_state, times )
+        soln = fake_odeint( cf, initial_state, times, self )
         # make that timeseries of lists into timeseries of dictionaries
         timeseries = [ dict( (k,v) for k,v in
           zip([self._time_variable]+self._vars,[t]+list(point)) )
           for t, point in zip(times, soln) ]
         return ODETrajectory(self, timeseries)
     def compute_flow(self, y, t):
+        # provide this in a subclass.  It needs to return a numpy array of
+        # floats providing the dy/dt vector matching the y argument.
         pass
+    def equilibria(self, ranges=None):
+        def grid_range( var ):
+            try:
+                return ranges[var]
+            except (TypeError, AttributeError):
+                return numpy.arange( -1, 1.01, 0.5 )
+        grid_ranges = ( grid_range(var) for var in self._vars )
+        import sets, itertools
+        eq_set = sets.Set()
+        def objective_function( x ):
+            #print 'try at', x, '...',
+            try:
+                answer = sum( d*d for d in self.compute_flow( x, 0 ) )
+                #print answer
+                return answer
+            except (ValueError, DynamicsException), e:
+                #print 'nope'
+                return oo
+        for grid_point in itertools.product( *grid_ranges ):
+            print 'grid point', grid_point
+            sys.stdout.flush()
+            try: # check the flow exists at the start point
+                self.compute_flow( grid_point, 0 )
+            except (DynamicsException,ValueError):
+                continue
+            print 'minimize'
+            sys.stdout.flush()
+            minimum = minimize( objective_function, grid_point )
+            if objective_function( minimum ) < 0.001:
+                minimum = tuple( N(m, 10) for m in minimum )
+                print 'found', minimum
+                sys.stdout.flush()
+                eq_set.add( minimum )
+        add_hats = self.add_hats()
+        equilibria = [ { add_hats(k):v for k,v in zip( self._vars, zero ) } for zero in eq_set ]
+        return equilibria
     def plot_vector_field(self, xlims, ylims, filename='', vf=None, xlabel=-1, ylabel=-1, t=0, **options):
         from sage.plot.all import Graphics
         from sage.misc.misc import xsrange
         from sage.plot.plot_field import PlotField
         from sage.plot.misc import setup_for_eval_on_grid
-        import numpy
         xlims = tuple( self._bindings.substitute( v ) for v in xlims )
         ylims = tuple( self._bindings.substitute( v ) for v in ylims )
         xvar, yvar = ( SR(xlims[0]), SR(ylims[0]) )
@@ -560,14 +632,17 @@ class NumericalODESystem( ODESystem ):
                     v = self.compute_flow( numpy.array( [ x, y ], float ), t )
                     xs.append( x )
                     ys.append( y )
+                    if -0.001 <= v[0] <= 0.001: v[0] = 0
                     dxs.append( v[0] )
+                    if -0.001 <= v[1] <= 0.001: v[1] = 0
                     dys.append( v[1] )
                 except: pass
         dxs = numpy.ma.masked_invalid( numpy.array( dxs, dtype=float ) )
         dys = numpy.ma.masked_invalid( numpy.array( dys, dtype=float ) )
         g = Graphics()
         g._set_extra_kwds( Graphics._extract_kwds_for_show( options ) )
-        g.add_primitive( PlotField( xs, ys, dxs, dys, options ) )
+        if len(xs) > 0:
+            g.add_primitive( PlotField( xs, ys, dxs, dys, options ) )
         if (xlabel == -1): xlabel = xvar
         if (ylabel == -1): ylabel = yvar
         g.axes_labels( ['$%s$'%latex(v) for v in (xlabel,ylabel)] )

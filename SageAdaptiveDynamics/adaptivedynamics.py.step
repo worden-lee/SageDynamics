@@ -18,10 +18,9 @@ def limits(expr, lims):
         #print ' =>',expr
     return expr
 
-class AdaptiveDynamicsException(Exception):
+class AdaptiveDynamicsException(DynamicsException):
     def __init__( self, message, latex_str=None ):
-        self._latex_str = latex_str
-        Exception.__init__( self, message )
+        DynamicsException.__init__( self, message, latex_str )
 
 class AdaptiveDynamicsModel(ODESystem):
     """Given a population dynamics model in which dynamics of population
@@ -90,10 +89,8 @@ class AdaptiveDynamicsModel(ODESystem):
         self._flow = dict( (k, equilibrium(v)) for k,v in self._flow.items() )
         super(AdaptiveDynamicsModel, self).__init__( self._flow, list(self._flow.keys()),
           bindings=early_bindings + late_bindings + popdyn_model._bindings + self._equilibrium )
-        # after the late bindings it might need another rinse cycle in
-        # maxima to resolve the limits
-        #print 'before maxima rinse', self._vars[0], '=>', self._flow[self._vars[0]]
-        #self._flow = { k:maxima(repr(v)) for k,v in self._flow._items() }
+        # after the late bindings it might need going over
+        # to resolve the limits
         #print 'and after:', self._vars[0], '=>', self._flow[self._vars[0]]
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write_block( self )
@@ -102,6 +99,7 @@ class AdaptiveDynamicsModel(ODESystem):
     def calculate_adaptive_dynamics(self):
         # We get the invasion exponent for u_i by adding an extra population,
         # which will soon be asymptotically identical to u_i.
+        #print 'ad popdyn:', self._popdyn_model
         self._extended_system = deepcopy(self._popdyn_model)
         self._extended_system.set_population_indices(self._popdyn_model._population_indices + ['i'])
         self._extended_system.bind_in_place( self._early_bindings )
@@ -192,6 +190,8 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         self._late_bindings = late_bindings
         self._equilibrium_function = equilibrium_function
         self.calculate_adaptive_dynamics()
+        #print 'ad flow:', self._flow
+        #print '+ bindings:', early_bindings + late_bindings + popdyn_model._bindings
         # unlike AdaptiveDynamicsModel, don't include the equilibrium here,
         # wait until compute_flow() to plug it in
         super(NumericalAdaptiveDynamicsModel, self).__init__(
@@ -199,10 +199,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
           time_variable = time_variable,
           flow = self._flow,
           bindings=early_bindings + late_bindings + popdyn_model._bindings )
-        # give the AD expressions another rinse through maxima
-        # post-late-bindings, because there might be limits that haven't
-        # been properly resolved
-        self._flow = { k:SR(maxima(repr(v))) for k,v in self._flow.items() }
+        #print '--> flow:', self._flow
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write_block( self )
         self._debug_output.close()
@@ -223,14 +220,21 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         #print 'compute_flow:', u, t
         u_bindings = Bindings( dict( zip( self._vars, u ) ) )
         eq = self.equilibrium_function( u_bindings )
+        #print 'eq:', eq
+        #print 'eq Xhat_0:', eq(hat('X_0'))
+        if any( eq( hat(x) ) <= 0 for x in self._popdyn_model.population_vars() ):
+             raise AdaptiveDynamicsException( 'Inviable population dynamics equilibrium in compute_flow' )
         #print 'flow 0:', self._flow[self._vars[0]]
         #print 'eq flow:', eq( self._flow[self._vars[0]] )
         #print 'u eq flow:', u_bindings( eq( self._flow[self._vars[0]] ) )
         #sys.stdout.flush()
-        if any( eq( hat(x) ) <= 0 for x in self._popdyn_model.population_vars() ):
-             raise AdaptiveDynamicsException( 'Inviable population dynamics equilibrium in compute_flow' )
-        dudt = numpy.array( [ u_bindings( eq( self._flow[v] ) ) for v in self._vars ], float )
-        #print 'numpy array', dudt
+        #print 'compute flow:', [ u_bindings( eq( self._flow[v] ) ) for v in self._vars ]
+        #sys.stdout.flush()
+        #print 'compute flow =', [ maxima( u_bindings( eq( self._flow[v] ) ) ) for v in self._vars ]
+        #sys.stdout.flush()
+        dudt = numpy.array( [ N( u_bindings( eq( self._flow[v] ) ) ) for v in self._vars ], float )
+        #print 'compute flow', u, dudt
+        #sys.stdout.flush()
         return dudt
 
 # using this for the above equilibrium_function argument
