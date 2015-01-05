@@ -223,7 +223,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         #print 'eq:', eq
         #print 'eq Xhat_0:', eq(hat('X_0'))
         if any( eq( hat(x) ) <= 0 for x in self._popdyn_model.population_vars() ):
-             raise AdaptiveDynamicsException( 'Inviable population dynamics equilibrium in compute_flow' )
+             raise AdaptiveDynamicsException( 'Inviable population dynamics equilibrium ' + str(eq) + ' in compute_flow' )
         #print 'flow 0:', self._flow[self._vars[0]]
         #print 'eq flow:', eq( self._flow[self._vars[0]] )
         #print 'u eq flow:', u_bindings( eq( self._flow[self._vars[0]] ) )

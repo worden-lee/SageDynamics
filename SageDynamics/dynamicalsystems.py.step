@@ -280,32 +280,35 @@ class indexer(SageObject):
             except TypeError:
                 return symbolic_expression("%s_%s" % (self._f,i))
 
+# this class was nested inside indexer_2d, but it broke pickling
+class subindexer(indexer):
+    def __init__(self, f, i):
+	self._f = f
+	self._i = i
+    def __getitem__(self, j):
+	return SR.symbol( '%s_%s_%s' % (self._f, self._i, j),
+	    latex_name='%s_{%s%s}' % (self._f, self._i, j) )
+
 class indexer_2d(indexer):
     """Instead of mapping i |-> x_i, this does a 2-step mapping
     i |-> j |-> x_i_j.  That is, indexer_2d('x')[i][j] produces x_i_j."""
     def __getitem__(self, i):
-        class subindexer(indexer):
-            def __init__(self, f, i):
-                self._f = f
-                self._i = i
-            def __getitem__(self, j):
-                return SR.symbol( '%s_%s_%s' % (self._f, self._i, j),
-                    latex_name='%s_{%s%s}' % (self._f, self._i, j) )
         return subindexer( self._f, i )
+
+class reverse_subindexer(indexer):
+    def __init__(self, f, j):
+	self._f = f
+	self._j = j
+    def __getitem__(self, i):
+	return SR.symbol( '%s_%s_%s' % (self._f, i, self._j ),
+	    latex_name='%s_{%s%s}' % (self._f, i, self._j ) )
 
 class indexer_2d_reverse(indexer_2d):
     """Just like indexer_2d but maps j |-> i |-> x_i_j rather than to
     x_j_i as the other one would do.  Useful when you want a way to
     generate all x_i_j for a given j, as I do."""
     def __getitem__(self, j):
-        class subindexer(indexer):
-            def __init__(self, f, j):
-                self._f = f
-                self._j = j
-            def __getitem__(self, i):
-                return SR.symbol( '%s_%s_%s' % (self._f, i, self._j ),
-                    latex_name='%s_{%s%s}' % (self._f, i, self._j ) )
-        return subindexer( self._f, j )
+        return reverse_subindexer( self._f, j )
 
 # And now the dynamical systems classes.
 
@@ -335,7 +338,7 @@ class ODESystem(SageObject):
         self._vars = vars
         self._time_variable = time_variable
         self._bindings = bindings
-        self._flow = dict( (k, bindings(v)) for k,v in self._flow.items() )
+        self._flow = { k:bindings(v) for k,v in self._flow.items() }
     def __repr__(self):
         """Output the system as a system of differential equations"""
         return join( ('%s -> %s'%(v,self._flow[v])
@@ -366,7 +369,7 @@ class ODESystem(SageObject):
 
         See bind(), below."""
         binding = Bindings( *bindings )
-        self._flow = dict( (k, binding(v)) for k,v in self._flow.items() )
+        self._flow = { k:binding(v) for k,v in self._flow.items() }
         self._bindings = self._bindings.merge(binding)
     def bind(self, *bindings):
         """If you create a system with various symbolic parameters, like
@@ -537,11 +540,13 @@ def fake_odeint(func, y0, t, args=None, Dfun=None):
     ig.set_initial_value(y0, t=t[0])
     if not isinstance(args, (tuple,list)): args = (args,)
     ig.set_f_params(*args)
-    y = []
+    y = [y0]
     for tt in t[1:]:
         #if not ig.successful():
         #    break
-        y.append(ig.integrate(tt))
+        try:
+            y.append(ig.integrate(tt))
+        except DynamicsException: break
     return numpy.array(y)
 
 class NumericalODESystem( ODESystem ):
@@ -560,7 +565,7 @@ class NumericalODESystem( ODESystem ):
         # note flow is only used for printing out the system
         self._flow = flow
         if self._flow is not None:
-            self._flow = dict( (k, bindings(v)) for k,v in self._flow.items() )
+            self._flow = { k:bindings(v) for k,v in self._flow.items() }
     def solve(self, initial_conditions, end_points=20, step=0.1):
         initial_t = initial_conditions[0]
         initial_state = numpy.array( initial_conditions[1:], float )
