@@ -1,5 +1,4 @@
 """Dynamical systems classes"""
-
 from sage.all import *
 from string import join
 from sage.misc.latex import _latex_file_
@@ -45,6 +44,10 @@ class ODETrajectory(SageObject):
         """
         self._system = system
         self._timeseries = timeseries
+    def append(self, state):
+        """state: a dictionary to be added to self._timeseries"""
+        self._timeseries += [ state ]
+        return self
     def plot(self, xexpr, yexpr, filename='', xlabel=-1, ylabel=-1, **args):
         """Make a 2-d plot of some pair of symbolic expressions that can
         be resolved to values of the state variables, time variable and
@@ -384,11 +387,10 @@ class ODESystem(SageObject):
         bound = deepcopy( self )
         bound.bind_in_place( *bindings )
         return bound
-    def solve(self, initial_conditions, end_points=20, step=0.1):
+    def solve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
         """Use a numerical solver to find a concrete trajectory of the system.
 
-        initial_conditions: a list of values for the time variable and the
-        state variables (in that order).
+        initial_conditions: list of initial values for the state variables
 
         This function returns the numerical solution, but it also stores it
         in the ODESystem object's state, so that subsequent calls to plot()
@@ -399,8 +401,9 @@ class ODESystem(SageObject):
         #  end_points )
         soln = desolve_system_rk4(
           [self._flow[v] for v in self._vars],
-          self._vars, initial_conditions, ivar=self._time_variable,
-          end_points=end_points, step=step )
+          self._vars, [start_time] + initial_conditions,
+          ivar=self._time_variable,
+          end_points=end_time, step=step )
         # make that timeseries of lists into timeseries of dictionaries
         timeseries = [ dict( (k,v) for k,v in
           zip([self._time_variable]+self._vars,point) )
@@ -438,7 +441,7 @@ class ODESystem(SageObject):
         operate on the state variables."""
         try:
             self._add_hats( self._time_variable )
-        except AttributeError:
+        except (AttributeError,TypeError):
             self._add_hats = Bindings( { v:hat(v) for v in self._vars } )
         # self.add_hats( expression ) returns hat-added expression
         if expression is not None:
@@ -480,6 +483,17 @@ class ODESystem(SageObject):
     def stable_interior_equilibria(self):
         remove_hats = self.remove_hats()
         return [ eq for eq in self.interior_equilibria() if self.is_stable( self.jacobian_matrix( { remove_hats(k):v for k,v in eq.items() } ) ) ]
+    def test_equilibrium( self, eq, t=0 ):
+        '''evaluate whether a state vector is an equilibrium (or very near).
+
+        eq: an array, vector, tuple, or Bindings.
+        returns True or False'''
+        try: # is it a Bindings?
+            eq('t')
+        except AttributeError: # if eq() doesn't work - is this right?
+            eq = Bindings( zip(self._vars, eq) )
+        flow = self._flow( eq(v) for v in self._vars )
+        return ( sum( x*x for x in flow ) < 0.001 )
     def plot_bifurcation_diagram( self, ind_range, dep_range, filename=None, xlabel=None, ylabel=None, **args ):
         (p, pmin, pmax) = ind_range
         (y, ymin, ymax) = dep_range
@@ -566,14 +580,11 @@ class NumericalODESystem( ODESystem ):
         self._flow = flow
         if self._flow is not None:
             self._flow = { k:bindings(v) for k,v in self._flow.items() }
-    def solve(self, initial_conditions, end_points=20, step=0.1):
-        initial_t = initial_conditions[0]
-        initial_state = numpy.array( initial_conditions[1:], float )
-        times = numpy.arange( initial_t, end_points, step )
+    def solve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
         def cf(t, y, s):
-            return list( s.compute_flow(y, t) )
-        #soln = fake_odeint( lambda y, t, _self=self: _self.compute_flow( y, t ), initial_state, times )
-        soln = fake_odeint( cf, initial_state, times, self )
+            return list( s.compute_flow(y, t, True) )
+        times = numpy.arange( start_time, end_time, step )
+        soln = fake_odeint( cf, numpy.array( initial_conditions, float ), times, self )
         # make that timeseries of lists into timeseries of dictionaries
         timeseries = [ dict( (k,v) for k,v in
           zip([self._time_variable]+self._vars,[t]+list(point)) )
@@ -583,6 +594,34 @@ class NumericalODESystem( ODESystem ):
         # provide this in a subclass.  It needs to return a numpy array of
         # floats providing the dy/dt vector matching the y argument.
         pass
+    def detect_equilibrium( self, eq, flow=None, t=0 ):
+        '''evaluate whether a state vector is an equilibrium (or very near).
+
+        eq: an array, vector, tuple, or Bindings.
+        returns True or False'''
+        try: # in case it's a Bindings
+            eq = numpy.array( [ eq(v) for v in self._vars ] )
+        except TypeError: # if eq() doesn't work - is this right?
+            pass
+        if flow is None:
+            flow = self.compute_flow( eq, t )
+        flow_norm = sum( x*x for x in flow )
+        #print 'check', flow_norm, 'vs 0.0005'
+        # are we close to equilibrium
+        if flow_norm < 0.0001:
+            # yes
+            print 'norm is small:',flow_norm
+            # but are we getting closer
+            next_state = numpy.array( [ x + 0.001*dx for x, dx in zip( eq, flow ) ], float )
+            next_flow = self.compute_flow( next_state, t )
+            next_norm = sum( x*x for x in next_flow )
+            print 'next norm is', next_norm
+            if next_norm < flow_norm:
+                # yes
+                print 'equilibrium!'
+                return True
+            # no
+        return False
     def equilibria(self, ranges=None):
         def grid_range( var ):
             try:
@@ -682,6 +721,7 @@ class PopulationDynamicsSystem(ODESystem):
         self._flow = self.flow()
         self._vars = self._nonpop_vars + self.population_vars()
         #self._flow = dict( (k,self._bindings(v)) for k,v in self._flow.items() )
+        self._add_hats = None
     # subclasses have to provide the flow
     def flow(self): pass
     def nontrivial_equilibria(self):

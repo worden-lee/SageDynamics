@@ -9,11 +9,16 @@ endif
 # how to run a sage script and capture its output
 # the odd tee command is possibly temporary - it puts the 
 # script's output into the .make.log (or console) as well as the output file
-%.sage.out %.sage.tried : %.sage
-	touch $*.sage.tried
+%.sage.out : %.sage
 	$(RM) $*.sage.out $*.sage.status $(STEP_PRODUCTS)
 	(sage $< && touch $*.sage.status) | tee $*.sage.dmp
 	[ -e $*.sage.status ] && ($(RM) $*.sage.status && mv $*.sage.dmp $*.sage.out) || exit 1
+
+# .tried file gets updated if you just TRY to make the .out file
+# use this as a downstream prerequisite to avoid lots of hopeless retrying
+%.sage.tried : %.sage
+	touch $*.sage.tried
+	-$(MAKE) $*.sage.out
 
 .PRECIOUS: %.sage.tried
 
@@ -26,3 +31,6 @@ sage-gdb :
 	sage -gdb
 
 .PHONY: sage sage-gdb
+
+# experimental: not printing commands while making standalone files
+.SILENT: %.tex-inline.latexml.html %.tex-math.latexml.html
