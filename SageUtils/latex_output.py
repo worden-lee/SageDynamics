@@ -46,7 +46,7 @@ class latex_output_base(SageObject):
     def write_block(self, *args):
         '''Output latex representation of each argument, set apart in \\[ \\]'''
         self.write( '\n\\[' )
-        for o in args: self.write( self.latex(o) + '\\\n' )
+        self.write( '\\\\\n'.join( self.latex(o) for o in args ) )
         self.write( '\\]\n' )
         return self
     def write_environment(self, envname, *stuff):
