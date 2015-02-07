@@ -116,17 +116,27 @@ class ODETrajectory(SageObject):
         """
         #print 'plot %s vs. %s' % (str(xexpr), str(yexpr))
         #print 'bindings are ', self._system._bindings
+        xexpr = self._system._bindings(xexpr)
+        try:
+            # TODO: this is not doing colors right
+            P = None
+            for y in yexpr:
+                p = self.plot( xexpr, y, **args )
+                if P is None:
+                    P = p
+                else:
+                    P += p
+        except TypeError:
+            yexpr = self._system._bindings(yexpr)
+            #print 'after substitution: %s vs. %s' % (str(xexpr), str(yexpr))
+            #print 'timeseries:', self._timeseries
+            P = list_plot(
+              [ (p(xexpr),p(yexpr)) for p in self._timeseries ],
+              plotjoined = True,
+              **args
+            )
         if (xlabel == -1): xlabel = xexpr
         if (ylabel == -1): ylabel = yexpr
-        xexpr = self._system._bindings(xexpr)
-        yexpr = self._system._bindings(yexpr)
-        #print 'after substitution: %s vs. %s' % (str(xexpr), str(yexpr))
-        #print 'timeseries:', self._timeseries
-        P = list_plot(
-          [ (p(xexpr),p(yexpr)) for p in self._timeseries ],
-          plotjoined = True,
-          **args
-        )
         try:
             xlabel.expand() # find out if it's an expression object
             xlabel = '$%s$' % latex(xlabel)
@@ -459,10 +469,13 @@ class ODESystem(SageObject):
         This function returns the numerical solution, but it also stores it
         in the ODESystem object's state, so that subsequent calls to plot()
         refer to the most recent solution generated."""
-        #print "desolve: %s, %s, %s, %s, %s" % (
+        #print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
         #  [self._flow[v] for v in self._vars],
-        #  self._vars, initial_conditions, self._time_variable,
-        #  end_points )
+        #  self._vars,
+        #  [start_time] + initial_conditions,
+        #  self._time_variable,
+        #  end_time,
+        #  step )
         soln = desolve_system_rk4(
           [self._flow[v] for v in self._vars],
           self._vars, [start_time] + initial_conditions,
