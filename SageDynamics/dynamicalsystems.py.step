@@ -118,6 +118,8 @@ class ODETrajectory(SageObject):
         #print 'bindings are ', self._system._bindings
         xexpr = self._system._bindings(xexpr)
         try:
+            if isinstance( yexpr, str ): raise TypeError
+            #if isinstance( yexpr, basestr ): raise TypeError
             # TODO: this is not doing colors right
             P = None
             for y in yexpr:
