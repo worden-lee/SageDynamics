@@ -86,7 +86,7 @@ class AdaptiveDynamicsModel(ODESystem):
         self._equilibrium = equilibrium
         self._debug_output.write( "Equilibrium of the population dynamics:" )
         self._debug_output.write_block( self._equilibrium )
-        self._flow = dict( (k, equilibrium(v)) for k,v in self._flow.items() )
+        self._flow = { k : equilibrium(v) for k,v in self._flow.items() }
         super(AdaptiveDynamicsModel, self).__init__( self._flow, list(self._flow.keys()),
           bindings=early_bindings + late_bindings + popdyn_model._bindings + self._equilibrium )
         # after the late bindings it might need going over
@@ -99,61 +99,76 @@ class AdaptiveDynamicsModel(ODESystem):
     def calculate_adaptive_dynamics(self):
         # We get the invasion exponent for u_i by adding an extra population,
         # which will soon be asymptotically identical to u_i.
+        self._vars = []
+        self._flow = {}
+        self._S = {}
+        gamma = SR.var('gamma')
         #print 'ad popdyn:', self._popdyn_model
-        self._extended_system = deepcopy(self._popdyn_model)
-        self._extended_system.set_population_indices(self._popdyn_model._population_indices + ['i'])
-        self._extended_system.bind_in_place( self._early_bindings )
-        #self._debug_output.write_block( self._extended_system )
-        #self._debug_output.write( "And with bindings: " )
-        #self._debug_output.write_block(  self._popdyn_model._bindings )
-        #self._extended_system = self._extended_system.bind(self._popdyn_model._bindings)
-        self._debug_output.write( "Original pop-dyn system: " )
-        self._debug_output.write_block( self._popdyn_model )
-        self._debug_output.write( "Extended pop-dyn system: " )
-        self._debug_output.write_block( self._extended_system )
-        X_i = self._extended_system._population_indexer['i']
-        dXi_dt = self._extended_system._flow[X_i]
-        # Now: The invasion exponent for u_i is 1/X_i dX_i/dt
-        I_i = dXi_dt / X_i
-        self._debug_output.write( 'The invasion rate for population $i$ is:\n\\begin{align*}\n',
-            '  \\mathscr I = \\frac{1}{%s}\\frac{d%s}{dt}' % (latex(X_i), latex(X_i)), ' &= ',
-            latex( I_i ), '\n\\end{align*}\n' )
-        #I_i = I_i.limit(X_i = 0)
-        #self._debug_output.write( ' &= ', latex( I_i ), '\n\\end{align}\n' )
-        # The invasion exponent we want is lim_{u_i->u, X_i->0}dI/du_i
-        self._debug_output.write( 'And the invasion exponent is\n\\begin{align*}\n', 
-            '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = \\lim_{%s,%s\\to0}%s' %
-                (latex(u[j]), ','.join('%s\\to %s' % (latex(uu['i']),latex(uu[j])) for uu in self._phenotype_indexers),
-                 latex(X_i), latex(diff(I_i, u['i']))) for j in self._popdyn_model._population_indices
-                for u in self._phenotype_indexers ),
-            '.\n\\end{align*}\n')
-        dI_du = [diff(I_i,u['i']) for u in self._phenotype_indexers]
-        #dI_du = [ equilibrium(dI_dui) for dI_dui in dI_du ]
-        dI_du = [ (u[j], Xj, limits(dI_dui,
-              dict((uu['i'],uu[j]) for uu in self._phenotype_indexers)))
-            for j, Xj in zip(self._popdyn_model._population_indices,
-              self._popdyn_model.population_vars())
-            for u, dI_dui in zip(self._phenotype_indexers, dI_du) ]
-        #print 'as u_i->u_*:\n', join( (" dI/d%s: %s" % (u_j, dI_duj)
-        #    for u_j, X_j, dI_duj in dI_du), '\n')
-        dI_du = [ (u_j, X_j, dI_duj.limit(X_i = 0)) for u_j, X_j, dI_duj in dI_du ]
-        self._debug_output.write( 'Which comes out to\n\\begin{align*}\n', 
-            '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = %s' %
-                (latex(u_j), latex(dI_duj)) for u_j, X_j, dI_duj in dI_du ),
-            '.\n\\end{align*}\n')
-        # The adaptive dynamics system is du/dt = \gamma \hat{X}_i dI/du.
-        # This is a general adaptive dynamics for the one-species,
-        # one-resource Mac/Lev system - we'll supply a specific mapping
-        # from u to b, m, c at solve time.
-        self._vars = [ u_j for u_j, X_j, dI_duj in dI_du ]
-        add_hats = self._popdyn_model.add_hats()
-        self._S = dict( (u_j, add_hats(dI_duj)) for u_j, X_j, dI_duj in dI_du )
+        for resident_index in self._popdyn_model._population_indices:
+            X_r = self._popdyn_model._population_indexer[ resident_index ]
+            extended_system = deepcopy(self._popdyn_model)
+            #self._extended_system.set_population_indices(self._popdyn_model._population_indices + ['i'])
+            mutant_index = extended_system.mutate( resident_index )
+            extended_system.bind_in_place( self._early_bindings )
+            #self._debug_output.write_block( self._extended_system )
+            #self._debug_output.write( "And with bindings: " )
+            #self._debug_output.write_block(  self._popdyn_model._bindings )
+            #self._extended_system = self._extended_system.bind(self._popdyn_model._bindings)
+            self._debug_output.write( "Original pop-dyn system: " )
+            self._debug_output.write_block( self._popdyn_model )
+            self._debug_output.write( "Extended pop-dyn system: " )
+            self._debug_output.write_block( extended_system )
+            X_i = extended_system._population_indexer[ mutant_index ]
+            dXi_dt = extended_system._flow[X_i]
+            # Now: The invasion exponent for u_i is 1/X_i dX_i/dt
+            I_i = dXi_dt / X_i
+            c = ('The invasion rate for mutant population is:\n\\begin{align*}\n' +
+                '  \\mathscr I = \\frac{1}{%s}\\frac{d%s}{dt}' % (latex(X_i), latex(X_i)) + ' &= ' +
+                latex( I_i ) + '\n\\end{align*}\n')
+            print c
+            self._debug_output.write( c )
+            #I_i = I_i.limit(X_i = 0)
+            #self._debug_output.write( ' &= ', latex( I_i ), '\n\\end{align}\n' )
+            # The invasion exponent we want is lim_{u_i->u, X_i->0}dI/du_i
+            self._debug_output.write( 'And the invasion exponent is\n\\begin{align*}\n', 
+                '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = \\lim_{%s,%s\\to0}%s' %
+                    (latex(u[resident_index]), ','.join('%s\\to %s' % (latex(uu[mutant_index]),latex(uu[resident_index])) for uu in self._phenotype_indexers),
+                     latex(X_i), latex(diff(I_i, u[mutant_index])))
+                    for u in self._phenotype_indexers ),
+                '.\n\\end{align*}\n')
+            dI_du = [diff(I_i,u[mutant_index]) for u in self._phenotype_indexers]
+            #dI_du = [ equilibrium(dI_dui) for dI_dui in dI_du ]
+            limdict = { uu[mutant_index]:uu[resident_index] for uu in self._phenotype_indexers }
+            #print 'limit of', dI_du[0]
+            print 'limit as', limdict
+            dI_du = [ ( u[resident_index], limits( dI_dui, limdict ) )
+                for u, dI_dui in zip(self._phenotype_indexers, dI_du) ]
+            #print 'as u_i->u_*:\n', join( (" dI/d%s: %s" % (u_j, dI_duj)
+            #    for u_j, X_j, dI_duj in dI_du), '\n')
+            print 'after those limits:\n  ', '\n  '.join(str(i) for u_j, i in dI_du)
+            from sage.interfaces.maxima_lib import maxima_lib
+            print maxima_lib( dI_du[0][1] )
+            dI_du = [ (u_j, limits(dI_duj, {X_i: 0})) for u_j, dI_duj in dI_du ]
+            self._debug_output.write( 'Which comes out to\n\\begin{align*}\n', 
+                '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = %s' %
+                    (latex(u_j), latex(dI_duj)) for u_j, dI_duj in dI_du ),
+                '.\n\\end{align*}\n')
+            print 'limit as', maxima_lib(X_i), '-> 0'
+            print ' -->', maxima_lib( dI_du[0][1] )
+            #print 'after limits:\n  ', '\n  '.join(str(i) for u_j, i in dI_du)
+            # The adaptive dynamics system is du/dt = \gamma \hat{X}_i dI/du.
+            # This is a general adaptive dynamics for the one-species,
+            # one-resource Mac/Lev system - we'll supply a specific mapping
+            # from u to b, m, c at solve time.
+            self._vars += [ u_j for u_j, dI_duj in dI_du ]
+            add_hats = self._popdyn_model.add_hats()
+            self._S.update( { u_j : add_hats(dI_duj) for u_j, dI_duj in dI_du } )
+            self._flow.update( { u_j : gamma*add_hats(X_r*dI_duj)
+                for u_j, dI_duj in dI_du
+            } )
         self._debug_output.write( '\\[ ', 
             '\\mathbf S', latex( column_vector( [ u_j for u_j in self._S.keys() ] ) ), ' = ',
             latex( column_vector( [ dI_duj for dI_duj in self._S.values() ] ) ), ' \\]\n' )
-        gamma = SR.var('gamma')
-        self._flow = dict( (u_j, gamma*add_hats(X_j*dI_duj))
-            for u_j, X_j, dI_duj in dI_du )
 
 import numpy # do this now, not during compute_flow
 
@@ -190,8 +205,8 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         self._late_bindings = late_bindings
         self._equilibrium_function = equilibrium_function
         self.calculate_adaptive_dynamics()
-        #print 'ad flow:', self._flow
-        #print '+ bindings:', early_bindings + late_bindings + popdyn_model._bindings
+        print 'ad flow:', self._flow
+        print '+ bindings:', early_bindings + late_bindings + popdyn_model._bindings
         # unlike AdaptiveDynamicsModel, don't include the equilibrium here,
         # wait until compute_flow() to plug it in
         super(NumericalAdaptiveDynamicsModel, self).__init__(
@@ -199,7 +214,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
           time_variable = time_variable,
           flow = self._flow,
           bindings=early_bindings + late_bindings + popdyn_model._bindings )
-        #print '--> flow:', self._flow
+        print '--> flow:', self._flow
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write_block( self )
         self._debug_output.close()
@@ -219,8 +234,11 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
             raise AdaptiveDynamicsException( "Could not find interior equilibrium" )
 	return Bindings( answer )
     def compute_flow( self, u, t, with_exceptions=False ):
+        #print 'ode:'
+        #print self
         #print 'compute_flow:', u, t
         u_bindings = Bindings( dict( zip( self._vars, u ) ) )
+        #print 'u_bindings:', u_bindings
         # note equilibrium_function can raise DynamicsExceptions if there's
         # a problem finding pop. dyn. equilibria
         eq = self.equilibrium_function( u_bindings )
@@ -232,16 +250,20 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
             raise AdaptiveDynamicsException( 'Inviable population dynamics equilibrium ' + str(eq) + ' in compute_flow' )
         #print 'flow 0:', self._flow[self._vars[0]]
         #print 'eq flow:', eq( self._flow[self._vars[0]] )
-        #print 'u eq flow:', u_bindings( eq( self._flow[self._vars[0]] ) )
+        #print 'u eq flow:', [ u_bindings( eq( self._flow[v] ) ) for v in self._vars ]
         #sys.stdout.flush()
-        dudt = numpy.array( [ N( u_bindings( eq( self._flow[v] ) ) ) for v in self._vars ], float )
+        try:
+            dudt = numpy.array( [ N( u_bindings( eq( self._flow[v] ) ) ) for v in self._vars ], float )
+        except TypeError:
+            print 'trouble integrating ODE - can\'t evaluate', [ u_bindings( eq( self._flow[v] ) ) for v in self._vars ], 'numerically'
+            raise
         #print 'compute flow', u, dudt
         sys.stdout.flush()
         if with_exceptions and self.detect_equilibrium( u, dudt, t ):
-                # if there's an equilibrium, kick to the caller, who can
-                # test for a branching point
-                self._equilibrium_detected_at = t
-                raise EquilibriumDetectedException()
+            # if there's an equilibrium, kick to the caller, who can
+            # test for a branching point
+            self._equilibrium_detected_at = t
+            raise EquilibriumDetectedException()
         return dudt
     def solve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
         self._equilibrium_detected_at = -oo
@@ -309,7 +331,6 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
                     # yes, we're branching
                     #print 'yes!'
                     self._popdyn_model = branched_ad._popdyn_model
-                    self._extended_system = branched_ad._extended_system
                     self._vars = branched_ad._vars
                     self._S = branched_ad._S
                     self._flow = branched_ad._flow

@@ -10,7 +10,8 @@ while (<STEP>)
     print MK "$stem.out $stem.tried : $1\n";
   }
   elsif (/$commentmark\s*produces:\s*(\S.*)$/i) {
-    print MK "$1 : $stem.tried ;\n";
+    #print MK "$1 : $stem.tried ;\n";
+    print MK "$1 : $stem.out ;\n";
     $products .= " $1";
   }
   print SCRIPT;

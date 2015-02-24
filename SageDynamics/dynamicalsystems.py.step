@@ -103,6 +103,17 @@ class ODETrajectory(SageObject):
         #print 'as', state
         self._timeseries += [ self.point_to_bindings( state ) ]
         return self
+    def make_points(self, xexpr, yexpr):
+        # for branching stuff
+        # list the evaluations of the expressions at the points,
+        # only at the ones where they both evaluate to numbers
+        points = []
+        for p in self._timeseries:
+            try:
+                tup = (N(p(xexpr)), N(p(yexpr)))
+                points += [ tup ]
+            except TypeError: pass
+        return points
     def plot(self, xexpr, yexpr, filename='', xlabel=-1, ylabel=-1, **args):
         """Make a 2-d plot of some pair of symbolic expressions that can
         be resolved to values of the state variables, time variable and
@@ -133,7 +144,7 @@ class ODETrajectory(SageObject):
             #print 'after substitution: %s vs. %s' % (str(xexpr), str(yexpr))
             #print 'timeseries:', self._timeseries
             P = list_plot(
-              [ (p(xexpr),p(yexpr)) for p in self._timeseries ],
+              self.make_points( xexpr, yexpr ),
               plotjoined = True,
               **args
             )
@@ -206,7 +217,7 @@ class Bindings(dict):
             frepr = ', ' + frepr
         return '{%s%s}' % (self.inner_repr(), frepr)
     def inner_repr(self):
-        return u', '.join( u'%s %s %s'%(k, '->', v) for k,v in self.items() ) 
+        return ', '.join( '%s %s %s'%(k, '->', v) for k,v in self.items() ) 
     def _latex_(self):
         return '\\begin{align*}\n%s\n\\end{align*}' % self.latex_inner()
     def latex_inner(self):
@@ -219,7 +230,7 @@ class Bindings(dict):
         """Apply the bindings to an expression"""
         # if it's a Bindings or dict, apply ourself to all the values
         try:
-            return { k:self.substitute(v) for k,v in expr.items() }
+            return expr.__class__( { k:self.substitute(v) for k,v in expr.items() } )
         except (AttributeError, ValueError): pass
         # or if it's a vector or something, apply to all entries
         try:
@@ -305,7 +316,7 @@ class FunctionBindings(Bindings):
                     print 'Unrecognized initializer for bindings:', a
     def inner_repr(self):
         # would like to use unicode arrow u'\u2192' but causes output codec error
-        return u', '.join( u'%s(%s) %s %s' % (key[0], ','.join( *key[1] ), '->', val) for key,val in self.items() )
+        return ', '.join( '%s(%s) %s %s' % (key[0], ','.join( str(k) for k in key[1] ), '->', str(val)) for key,val in self.items() )
     def latex_inner(self):
         return '\\\\\n'.join( '  %s(%s) &\\to %s' % ( latex(key[0]), ','.join( latex(a) for a in key[1] ), latex( val ) ) for key, val in self.items() )
     def substitute(self, expr):
@@ -801,12 +812,16 @@ class PopulationDynamicsSystem(ODESystem):
     # don't set _population_indices directly, call this, to keep the flow in sync
     def set_population_indices(self, xi):
         self._population_indices = xi
-        self._flow = self.flow()
         self._vars = self._nonpop_vars + self.population_vars()
+        self._flow = self.flow()
         #self._flow = dict( (k,self._bindings(v)) for k,v in self._flow.items() )
         self._add_hats = None
     # subclasses have to provide the flow
     def flow(self): pass
+    def mutate(self, resident_index):
+        mutant_index = 1 + max( self._population_indices )
+        self.set_population_indices( self._population_indices + [ mutant_index ] )
+        return mutant_index
     def nontrivial_equilibria(self):
         equilibria = self.equilibria()
         return [ eq for eq in equilibria if sum( eq[hat(x)] for x in self.population_vars() ) != 0 ]
