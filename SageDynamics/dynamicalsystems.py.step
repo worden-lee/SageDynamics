@@ -212,7 +212,7 @@ class Bindings(dict):
             self[kk] = symbolic_expression(v)
         #print ' =>', self
     def __repr__(self):
-        frepr = self._function_bindings.inner_repr()
+        frepr = repr(self._function_bindings)
         if frepr != '':
             frepr = ', ' + frepr
         return '{%s%s}' % (self.inner_repr(), frepr)
@@ -314,7 +314,7 @@ class FunctionBindings(Bindings):
                     self.update( { (str(k),v.arguments()):SR(v) for k,v in a.items() } )
                 except ValueError:
                     print 'Unrecognized initializer for bindings:', a
-    def inner_repr(self):
+    def __repr__(self):
         # would like to use unicode arrow u'\u2192' but causes output codec error
         return ', '.join( '%s(%s) %s %s' % (key[0], ','.join( str(k) for k in key[1] ), '->', str(val)) for key,val in self.items() )
     def latex_inner(self):
@@ -332,7 +332,7 @@ class FunctionBindings(Bindings):
             # http://trac.sagemath.org/ticket/17503
             expr = expr.substitute_function( function(k[0]), v.function( *k[1] ) )
             expr = expr.substitute_function( function(k[0], nargs=len(k[1])), v.function( *k[1] ) )
-            #expr = expr.substitute_function(k,v)
+            expr = expr.substitute_function(k,v)
             #print ' => ', expr
         return simplify_limits( expr )
     def __deepcopy__(self, _dict):
@@ -750,7 +750,7 @@ class NumericalODESystem( ODESystem ):
                 sys.stdout.flush()
                 eq_set.add( minimum )
         add_hats = self.add_hats()
-        equilibria = [ { add_hats(k):v for k,v in zip( self._vars, zero ) } for zero in eq_set ]
+        equilibria = [ Bindings( { add_hats(k):v for k,v in zip( self._vars, zero ) } ) for zero in eq_set ]
         return equilibria
     def plot_vector_field(self, xlims, ylims, filename='', vf=None, xlabel=-1, ylabel=-1, t=0, **options):
         from sage.plot.all import Graphics
@@ -828,6 +828,12 @@ class PopulationDynamicsSystem(ODESystem):
     def stable_nontrivial_equilibria(self):
         remove_hats = self.remove_hats()
         return [ eq for eq in self.nontrivial_equilibria() if self.is_stable( self.jacobian_matrix( { remove_hats(k):v for k,v in eq.items() } ) ) ]
+    def interior_equilibria(self):
+        equilibria = self.equilibria()
+        def is_interior(x):
+            try: return N(x) > 0
+            except TypeError: return x != 0
+        return [ eq for eq in equilibria if all( is_interior(eq[hat(x)]) for x in self.population_vars() ) ]
     def plot_ZNGIs( self, xlims, ylims, vars=None, **args ):
         """Plot populations' zero net growth isoclines, using ODESystem's
         plot_isoclines()."""
