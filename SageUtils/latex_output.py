@@ -50,7 +50,11 @@ class latex_output_base(SageObject):
         self.write( '\\]\n' )
         return self
     def write_environment(self, envname, *stuff):
-        return self.write( '\n\\begin{', envname, '}\n  ', '\n  '.join(*stuff), '\n\\end{', envname, '}\n' );
+        return self.write(
+            '\n\\begin{', envname, '}\n  ',
+            '\\\\\n  '.join( self.latex(a) for a in stuff ),
+            '\n\\end{', envname, '}\n'
+        )
     def write_equality(self, *args):
         return self.write( '\n\\[\n  ', ' = '.join( self.latex(a) for a in args ), '\n\\]\n' )
     def write_equality_aligned(self, *args):
