@@ -433,7 +433,7 @@ class ODESystem(SageObject):
         """Output the system as a system of differential equations"""
         return join( ('%s -> %s'%(v,self._flow[v])
             for v in self._vars), '\n')
-    def __deepcopy__(self, _dict):
+    def x__deepcopy__(self, _dict):
         """There seems to be a weird bug when you deepcopy a symbolic expression.
         So I'm trying to avoid that."""
         other = copy( self )
@@ -822,6 +822,8 @@ class PopulationDynamicsSystem(ODESystem):
         mutant_index = 1 + max( self._population_indices )
         self.set_population_indices( self._population_indices + [ mutant_index ] )
         return mutant_index
+    def fake_population_index(self):
+        return 'x'
     def nontrivial_equilibria(self):
         equilibria = self.equilibria()
         return [ eq for eq in equilibria if sum( eq[hat(x)] for x in self.population_vars() ) != 0 ]
@@ -834,6 +836,9 @@ class PopulationDynamicsSystem(ODESystem):
             try: return N(x) > 0
             except TypeError: return x != 0
         return [ eq for eq in equilibria if all( is_interior(eq[hat(x)]) for x in self.population_vars() ) ]
+    def stable_interior_equilibria(self):
+        remove_hats = self.remove_hats()
+        return [ eq for eq in self.interior_equilibria() if self.is_stable( self.jacobian_matrix( { remove_hats(k):v for k,v in eq.items() } ) ) ]
     def plot_ZNGIs( self, xlims, ylims, vars=None, **args ):
         """Plot populations' zero net growth isoclines, using ODESystem's
         plot_isoclines()."""

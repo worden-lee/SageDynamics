@@ -106,8 +106,10 @@ class AdaptiveDynamicsModel(ODESystem):
         #print 'ad popdyn:', self._popdyn_model
         for resident_index in self._popdyn_model._population_indices:
             X_r = self._popdyn_model._population_indexer[ resident_index ]
+            # TODO: deepcopy not deep enough?
             extended_system = deepcopy(self._popdyn_model)
             #self._extended_system.set_population_indices(self._popdyn_model._population_indices + ['i'])
+            #print 'just before mutate:', extended_system.__class__.__name__, extended_system
             mutant_index = extended_system.mutate( resident_index )
             extended_system.bind_in_place( self._early_bindings )
             #self._debug_output.write_block( self._extended_system )
@@ -169,6 +171,20 @@ class AdaptiveDynamicsModel(ODESystem):
         self._debug_output.write( '\\[ ', 
             '\\mathbf S', latex( column_vector( [ u_j for u_j in self._S.keys() ] ) ), ' = ',
             latex( column_vector( [ dI_duj for dI_duj in self._S.values() ] ) ), ' \\]\n' )
+    def fake_population_index(self):
+        # LotkaVolterraAdaptiveDynamics uses this, to do partial derivatives
+        # separately from each other
+        return self._popdyn_model.fake_population_index()
+    def solve(self, initial_conditions, **opts):
+        trajectory = super(AdaptiveDynamicsModel,self).solve(initial_conditions, **opts)
+        # check that populations stay positive
+        xs = [ self._bindings(x) for x in self._popdyn_model.equilibrium_vars() ]
+        print 'timeseries[0]:', trajectory._timeseries[0]
+        print 'first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
+        for _t in trajectory._timeseries:
+            if any( N(_t(x)) <= 0 for x in xs ):
+                raise AdaptiveDynamicsException( "Non-positive population sizes: " + str( [ x == N(_t(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] ) )
+        return trajectory
 
 import numpy # do this now, not during compute_flow
 
