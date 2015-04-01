@@ -370,6 +370,23 @@ class indexer(SageObject):
             except TypeError:
                 return symbolic_expression("%s_%s" % (self._f,i))
 
+def scriptedsymbol( base, superscripts=(), subscripts=() ):
+    try:
+        base.expand() # see if it's an expression
+    except AttributeError: # if not
+        base = SR.symbol( base ) # it is now
+    name, latex_name = str(base), '{%s}'%latex(base)
+    if len(superscripts) > 0:
+        name += '^' + '^'.join(str(s) for s in superscripts)
+        latex_name += '^{%s}' % ''.join('{%s}'%latex(s) for s in superscripts)
+    if len(subscripts) > 0:
+        name += '_' + '_'.join(str(s) for s in subscripts)
+        latex_name += '_{%s}' % ''.join('{%s}'%latex(s) for s in subscripts)
+    return SR.symbol( name, latex_name=latex_name )
+
+def subscriptedsymbol( base, *subscripts ):
+    return scriptedsymbol( base, subscripts=subscripts )
+
 # this class was nested inside indexer_2d, but it broke pickling
 class subindexer(indexer):
     def __init__(self, f, i):
@@ -377,7 +394,7 @@ class subindexer(indexer):
 	self._i = i
     def __getitem__(self, j):
 	return SR.symbol( '%s_%s_%s' % (self._f, self._i, j),
-	    latex_name='%s_{%s%s}' % (self._f, self._i, j) )
+	    latex_name='{%s}_{%s%s}' % (self._f, self._i, j) )
 
 class indexer_2d(indexer):
     """Instead of mapping i |-> x_i, this does a 2-step mapping
