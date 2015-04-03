@@ -378,10 +378,16 @@ def scriptedsymbol( base, superscripts=(), subscripts=() ):
     name, latex_name = str(base), '{%s}'%latex(base)
     if len(superscripts) > 0:
         name += '^' + '^'.join(str(s) for s in superscripts)
-        latex_name += '^{%s}' % ''.join('{%s}'%latex(s) for s in superscripts)
+        if len(superscripts) > 1:
+            latex_name += '^{%s}' % ''.join('{%s}'%latex(s) for s in superscripts)
+        else:
+            latex_name += '^{%s}' % latex(superscripts[0])
     if len(subscripts) > 0:
         name += '_' + '_'.join(str(s) for s in subscripts)
-        latex_name += '_{%s}' % ''.join('{%s}'%latex(s) for s in subscripts)
+        if len(subscripts) > 1:
+            latex_name += '_{%s}' % ''.join('{%s}'%latex(s) for s in subscripts)
+        else:
+            latex_name += '_{%s}' % latex(subscripts[0])
     return SR.symbol( name, latex_name=latex_name )
 
 def subscriptedsymbol( base, *subscripts ):
