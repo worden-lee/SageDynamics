@@ -466,13 +466,17 @@ class ODESystem(SageObject):
         return other
     def _latex_(self):
         """Output the system as a system of differential equations in LaTeX form"""
+        return self._text_latex_() # not correct in math mode!
+        return '\\mbox{' + self._text_latex_() + '}'
+    def _text_latex_(self):
         return '\\begin{align*}\n' + '\\\\\n'.join(
              r'\frac{d%s}{d%s} &= %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
-                for v in self._vars ) + '\n\\end{align*}'
+                for v in self._vars ) + '\n\\end{align*}\n'
     def write_latex(self, filename):
         """Output the system in LaTeX form to a file"""
         ltxout = open( filename, 'w' )
-        ltxout.write( _latex_file_( self, title='' ) )
+        ltxout.write( self._text_latex_() )
+        ltxout.write( '\n\\vspace{24pt}\n' )
         ltxout.close()
     def time_variable(self):
         """Provide the independent variable, for instance for plotting"""

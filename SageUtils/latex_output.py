@@ -41,7 +41,7 @@ class latex_output_base(SageObject):
     def write_inline(self, *args):
         '''Output latex representation of each argument, inline in math mode'''
         for o in args:
-            self.write( '$%$' % self.latex(o) )
+            self.write( '$%s$' % self.latex(o) )
         return self;
     def write_block(self, *args):
         '''Output latex representation of each argument, set apart in \\[ \\]'''
