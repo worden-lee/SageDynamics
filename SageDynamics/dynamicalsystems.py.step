@@ -655,6 +655,54 @@ class ODESystem(SageObject):
         if filename is not None:
             bp.save( filename )
         return bp
+    def gsl_system(self):
+        il = range(len(self._vars))
+        cython_code = (
+            "cimport sage.gsl.ode\n"
+            "import sage.gsl.ode\n"
+            "from sage.ext.interpreters.wrapper_rdf cimport Wrapper_rdf\n"
+            "include 'gsl.pxi'\n"
+            "cdef class gsl_ode_system(sage.gsl.ode.ode_system):\n"
+            + ''.join(
+            "    cdef Wrapper_rdf _flow%d\n"%i for i in il
+            ) +
+            "    def __init__( self, "
+            + ', '.join("Wrapper_rdf f%d"%i for i in il)
+            + " ):\n"
+            + ''.join(
+            "        self._flow%d = f%d\n"% (i,i) for i in il
+            ) +
+            "    cdef int c_f( self, double t, double *y, double *dydt ):\n"
+            #"        cdef double *result = [t]\n"
+            + (''.join(
+            "        self._flow%d.call_c( y, &dydt[%d] )\n"
+            #"        dydt[%d] = result[0]\n"
+                % (i,i) for i in il
+            )) +
+            "        return GSL_SUCCESS\n"
+            # need c_j() as well?
+        )
+        print cython_code
+        module = sage.misc.cython.compile_and_load( cython_code )
+        T = ode_solver()
+        #T.algorithm = 'bsimp'
+        T.function = module.gsl_ode_system( *(
+            fast_float( self._flow[v], *self._vars )
+            for v in self._vars
+        ) )
+        return T
+    def solve_gsl( self, initial_conditions, start_time=0, end_time=20, step=0.1):
+        try:
+            self._gsl_system
+        except AttributeError:
+            self._gsl_system = self.gsl_system()
+        self._gsl_system.ode_solve(
+            t_span=[start_time, end_time],
+            num_points = (end_time - start_time) / step + 1,
+            y_0 = initial_conditions
+        )
+        return ODETrajectory( self, ( [ t ] + ys for t,ys in self._gsl_system.solution ) )
+        return self._gsl_system.solution
 
 # used by NumericalODESystem.solve()
 # unlike the standard odeint(), this fails when the du/dt function
