@@ -509,13 +509,13 @@ class ODESystem(SageObject):
         This function returns the numerical solution, but it also stores it
         in the ODESystem object's state, so that subsequent calls to plot()
         refer to the most recent solution generated."""
-        #print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
-        #  [self._flow[v] for v in self._vars],
-        #  self._vars,
-        #  [start_time] + initial_conditions,
-        #  self._time_variable,
-        #  end_time,
-        #  step )
+        print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
+          [self._flow[v] for v in self._vars],
+          self._vars,
+          [start_time] + initial_conditions,
+          self._time_variable,
+          end_time,
+          step )
         soln = desolve_system_rk4(
           [self._flow[v] for v in self._vars],
           self._vars, [start_time] + initial_conditions,
@@ -752,6 +752,7 @@ class NumericalODESystem( ODESystem ):
         if self._flow is not None:
             self._flow = { k:bindings(v) for k,v in self._flow.items() }
     def solve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
+	print 'NumericalODESystem.solve'
         times = numpy.arange( start_time, end_time, step )
         soln = fake_odeint( self, numpy.array( initial_conditions, float ), times, self )
         # make that timeseries of lists into timeseries of dictionaries

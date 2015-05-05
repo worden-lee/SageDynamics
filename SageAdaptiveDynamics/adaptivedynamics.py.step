@@ -87,8 +87,11 @@ class AdaptiveDynamicsModel(ODESystem):
         self._debug_output.write( "Equilibrium of the population dynamics:" )
         self._debug_output.write_block( self._equilibrium )
         self._flow = { k : equilibrium(v) for k,v in self._flow.items() }
-        super(AdaptiveDynamicsModel, self).__init__( self._flow, list(self._flow.keys()),
-          bindings=early_bindings + late_bindings + popdyn_model._bindings + self._equilibrium )
+        super(AdaptiveDynamicsModel, self).__init__(
+            self._flow,
+            list(self._flow.keys()),
+            bindings=early_bindings + late_bindings + popdyn_model._bindings + self._equilibrium
+        )
         # after the late bindings it might need going over
         # to resolve the limits
         #print 'and after:', self._vars[0], '=>', self._flow[self._vars[0]]
@@ -176,14 +179,23 @@ class AdaptiveDynamicsModel(ODESystem):
         # separately from each other
         return self._popdyn_model.fake_population_index()
     def solve(self, initial_conditions, **opts):
+        # check that initial populations are positive
+        icbind = Bindings( { v:iv for v, iv in zip(self._vars, initial_conditions) } )
+        if any( icbind(self._bindings(x)) <= 0 for x in self._popdyn_model.equilibrium_vars() ):
+            raise AdaptiveDynamicsException(
+                'Initial population sizes are non-positive: ' +
+                str( [ x == N(_t(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] )
+            )
         trajectory = super(AdaptiveDynamicsModel,self).solve(initial_conditions, **opts)
         # check that populations stay positive
         xs = [ self._bindings(x) for x in self._popdyn_model.equilibrium_vars() ]
-        print 'timeseries[0]:', trajectory._timeseries[0]
-        print 'first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
-        for _t in trajectory._timeseries:
-            if any( N(_t(x)) <= 0 for x in xs ):
-                raise AdaptiveDynamicsException( "Non-positive population sizes: " + str( [ x == N(_t(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] ) )
+        print 'timeseries:', trajectory._timeseries
+        print 'X at first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
+        for i in range(len(trajectory._timeseries)):
+            if any( N(trajectory._timeseries[i](x)) <= 0 for x in xs ):
+                print 'Adaptive dynamics cut short by extinction at ' + str( trajectory._timeseries[i] )
+                trajectory._timeseries = trajectory._timeseries[:i]
+                break
         return trajectory
 
 import numpy # do this now, not during compute_flow
