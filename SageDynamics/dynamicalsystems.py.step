@@ -472,9 +472,13 @@ class ODESystem(SageObject):
         return '\\begin{align*}\n' + '\\\\\n'.join(
              r'\frac{d%s}{d%s} &= %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
                 for v in self._vars ) + '\n\\end{align*}\n'
-    def write_latex(self, filename):
+    def write_latex(self, filename, inline=False):
         """Output the system in LaTeX form to a file"""
-        ltxout = open( filename, 'w' )
+	if inline:
+            ltxout = open( filename, 'w' )
+	else:
+	    import latex_output
+            ltxout = latex_output.latex_output( filename )
         ltxout.write( self._text_latex_() )
         ltxout.write( '\n\\vspace{24pt}\n' )
         ltxout.close()
