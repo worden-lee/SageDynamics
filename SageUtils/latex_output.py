@@ -62,7 +62,7 @@ class latex_output_base(SageObject):
     def write_equality_aligned(self, *args):
         '''For convenience: write that one thing is equal to another (or more).
         This is because write_block( a == b ) often just writes "false"...'''
-        return self.write_environment( 'align*', '\n    &= '.join( self.latex(a) for a in args ) );
+        return self.write_environment( 'align*', '\\\\\n    &= '.join( self.latex(a) for a in args ) );
     def close(self):
         self._output.close()
         return self;

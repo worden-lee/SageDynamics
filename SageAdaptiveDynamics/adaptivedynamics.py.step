@@ -16,6 +16,11 @@ def limits(expr, lims):
         #print 'limit', args, expr
         expr = limit(expr, **args)
         #print ' =>',expr
+    # hacky workaround for maxima bug - if they don't get limited,
+    # just substitute them.  This may produce wrong output.  We're already
+    # getting wrong output, so this just makes it wrong less of the time.
+    # Not ideal, but useful for now.
+    expr = expr.subs( lims )
     return expr
 
 class AdaptiveDynamicsException(DynamicsException):
@@ -151,15 +156,15 @@ class AdaptiveDynamicsModel(ODESystem):
             #print 'as u_i->u_*:\n', join( (" dI/d%s: %s" % (u_j, dI_duj)
             #    for u_j, X_j, dI_duj in dI_du), '\n')
             print 'after those limits:\n  ', '\n  '.join(str(i) for u_j, i in dI_du)
-            from sage.interfaces.maxima_lib import maxima_lib
-            print maxima_lib( dI_du[0][1] )
+            #from sage.interfaces.maxima_lib import maxima_lib
+            #print maxima_lib( dI_du[0][1] )
             dI_du = [ (u_j, limits(dI_duj, {X_i: 0})) for u_j, dI_duj in dI_du ]
             self._debug_output.write( 'Which comes out to\n\\begin{align*}\n', 
                 '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = %s' %
                     (latex(u_j), latex(dI_duj)) for u_j, dI_duj in dI_du ),
                 '.\n\\end{align*}\n')
-            print 'limit as', maxima_lib(X_i), '-> 0'
-            print ' -->', maxima_lib( dI_du[0][1] )
+            #print 'limit as', maxima_lib(X_i), '-> 0'
+            #print ' -->', maxima_lib( dI_du[0][1] )
             #print 'after limits:\n  ', '\n  '.join(str(i) for u_j, i in dI_du)
             # The adaptive dynamics system is du/dt = \gamma \hat{X}_i dI/du.
             # This is a general adaptive dynamics for the one-species,
@@ -182,6 +187,8 @@ class AdaptiveDynamicsModel(ODESystem):
         # check that initial populations are positive
         icbind = Bindings( { v:iv for v, iv in zip(self._vars, initial_conditions) } )
         if any( icbind(self._bindings(x)) <= 0 for x in self._popdyn_model.equilibrium_vars() ):
+	    print ( 'Aborting solve: initial population sizes are non-positive:',
+                str( [ x == N(_t(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] ) )
             raise AdaptiveDynamicsException(
                 'Initial population sizes are non-positive: ' +
                 str( [ x == N(_t(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] )
@@ -298,7 +305,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         try:
             traj = super(NumericalAdaptiveDynamicsModel,self).solve( initial_conditions, start_time, end_time, step )
         except TrajectoryInterruptedException, ex:
-            #print ex, ':', ex._reason
+            print ex, ':', ex._reason
             if isinstance( ex._reason, EquilibriumDetectedException ):
                 # in case we returned early due to equilibrium, see if
                 # we're at an evolutionary branching point
