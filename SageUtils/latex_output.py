@@ -10,6 +10,7 @@ r'''\usepackage{amsmath}
 \pagestyle{empty}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{latexml}
 '''
 
 LATEX_HEADER = (

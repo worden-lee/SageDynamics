@@ -469,9 +469,15 @@ class ODESystem(SageObject):
         return self._text_latex_() # not correct in math mode!
         return '\\mbox{' + self._text_latex_() + '}'
     def _text_latex_(self):
-        return '\\begin{align*}\n' + '\\\\\n'.join(
-             r'\frac{d%s}{d%s} &= %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
+        return ('\\iflatexml\n' +
+	    '\\begin{align*}\n' + '\\\\\n'.join(
+            r'\frac{d%s}{d%s} &= %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
                 for v in self._vars ) + '\n\\end{align*}\n'
+            '\\else\n' +
+	    '\\begin{dgroup*}\n\\begin{dmath*}\n' + '\\end{dmath*}\n\\begin{dmath*}\n'.join(
+             r'\frac{d%s}{d%s} = %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
+                for v in self._vars ) + '\n\\end{dmath*}\n\\end{dgroup*}\n' +
+	    '\\fi\n')
     def write_latex(self, filename, inline=False):
         """Output the system in LaTeX form to a file"""
 	if inline:
