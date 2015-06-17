@@ -108,6 +108,33 @@ class wrap_latex( SageObject ):
     def _latex_(self):
         return self._str
 
+# TODO: integrate with stuff above
+def write_tex_inline( vname, lname=None, fname=None, bindings=None ):
+    if lname is None: lname = '\\'+str(vname)
+    if fname is None: fname = str(vname)
+    ltx = latex_output_base( open( fname+'.value.tex-inline', 'w' ) )
+    if bindings is None:
+	vval = vname
+    else:
+	vval = bindings(vname)
+    vstr = str(vval)
+    import re
+    if re.search('\.\d*0$',vstr):
+	print 'change', vstr, ':',
+	vstr = str(RDF(vval))
+    if re.search('\.\d{4,}',vstr):
+	print 'reduce', vstr, ':',
+	vstr = str(N(vval, digits=3))
+    if re.search('\.0$', vstr):
+	print 'truncate', vstr, ':'
+	vstr = str(ZZ(vval))
+    print vstr
+    if lname != '':
+        ltx.write( '$' + lname + ' = ' + vstr + '$' )
+    else:
+	ltx.write( '$' + vstr + '$' )
+    ltx.close()
+
 class column_vector(SageObject): # v.column() is missing?
     '''column_vector( x ) behaves just like vector( x ) but draws itself
     as a nice column in latex'''

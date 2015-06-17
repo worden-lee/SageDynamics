@@ -114,6 +114,14 @@ class ODETrajectory(SageObject):
                 points += [ tup ]
             except TypeError: pass
         return points
+    def bind_value(self, ts, expr):
+	try:
+	    return ts(expr)
+	except ValueError: # for instance, division by zero
+	    return NaN
+    def values(self, expr):
+	bex = self._system._bindings(expr)
+	return [ self.bind_value( t, bex ) for t in self._timeseries ]
     def plot(self, xexpr, yexpr, filename='', xlabel=-1, ylabel=-1, **args):
         """Make a 2-d plot of some pair of symbolic expressions that can
         be resolved to values of the state variables, time variable and
@@ -133,8 +141,9 @@ class ODETrajectory(SageObject):
             #if isinstance( yexpr, basestr ): raise TypeError
             # TODO: this is not doing colors right
             P = None
+	    colors = rainbow( len( yexpr ) )
             for y in yexpr:
-                p = self.plot( xexpr, y, **args )
+                p = self.plot( xexpr, y, color=colors.pop(), legend_label=latex(y), **args )
                 if P is None:
                     P = p
                 else:
@@ -491,14 +500,14 @@ class ODESystem(SageObject):
     def time_variable(self):
         """Provide the independent variable, for instance for plotting"""
         return self._time_variable
-    def bind_in_place(self, *bindings):
+    def bind_in_place(self, *bindings, **args):
         """Apply bindings to my formulas without copying to a new object.
 
         See bind(), below."""
-        binding = Bindings( *bindings )
+        binding = Bindings( *bindings, **args )
         self._flow = { k:binding(v) for k,v in self._flow.items() }
         self._bindings = self._bindings.merge(binding)
-    def bind(self, *bindings):
+    def bind(self, *bindings, **args):
         """If you create a system with various symbolic parameters, like
         dy/dt = ay^2 + by + c, or something, you can't numerically
         integrate it as is, you have to give values to parameters a, b, and c.
@@ -509,16 +518,12 @@ class ODESystem(SageObject):
         functions.
         """
         bound = deepcopy( self )
-        bound.bind_in_place( *bindings )
+        bound.bind_in_place( *bindings, **args )
         return bound
     def solve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
         """Use a numerical solver to find a concrete trajectory of the system.
 
-        initial_conditions: list of initial values for the state variables
-
-        This function returns the numerical solution, but it also stores it
-        in the ODESystem object's state, so that subsequent calls to plot()
-        refer to the most recent solution generated."""
+        initial_conditions: list of initial values for the state variables"""
         print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
           [self._flow[v] for v in self._vars],
           self._vars,
