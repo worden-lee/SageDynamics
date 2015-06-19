@@ -201,6 +201,9 @@ class AdaptiveDynamicsModel(ODESystem):
         for i in range(len(trajectory._timeseries)):
             if any( N(trajectory._timeseries[i](x)) <= 0 for x in xs ):
                 print 'Adaptive dynamics cut short by extinction at ' + str( trajectory._timeseries[i] )
+		#print '_timeseries[i]:', trajectory._timeseries[i]
+		#print 'maps', { x:self._bindings(x) for x in self._popdyn_model.equilibrium_vars() }
+		#print 'to', { x:trajectory._timeseries[i](self._bindings(x)) for x in self._popdyn_model.equilibrium_vars() }
                 trajectory._timeseries = trajectory._timeseries[:i]
                 break
         return trajectory

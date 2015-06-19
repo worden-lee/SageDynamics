@@ -73,6 +73,8 @@ class ODETrajectory(SageObject):
                 self.point_to_bindings( point ) for point in timeseries
             ]
             #print 'get', timeseries
+	except IndexError: # timeseries is empty
+	    pass
         self._timeseries = timeseries
     def __repr__(self):
         return 'ODETrajectory(' + repr(self._timeseries) + ')'
@@ -103,6 +105,11 @@ class ODETrajectory(SageObject):
         #print 'as', state
         self._timeseries += [ self.point_to_bindings( state ) ]
         return self
+    def __add__(self, other):
+	# you can combine trajectories from different models, at your own risk
+	#if self._system is not other._system:
+	#    raise ValueError, "Can't concatenate incompatible trajectories"
+	return ODETrajectory( self._system, self._timeseries + other._timeseries )
     def make_points(self, xexpr, yexpr):
         # for branching stuff
         # list the evaluations of the expressions at the points,
@@ -403,7 +410,7 @@ def subscriptedsymbol( base, *subscripts ):
     return scriptedsymbol( base, subscripts=subscripts )
 
 # this class was nested inside indexer_2d, but it broke pickling
-class subindexer(indexer):
+class indexer_2d_inner(indexer):
     def __init__(self, f, i):
 	self._f = f
 	self._i = i
@@ -415,9 +422,9 @@ class indexer_2d(indexer):
     """Instead of mapping i |-> x_i, this does a 2-step mapping
     i |-> j |-> x_i_j.  That is, indexer_2d('x')[i][j] produces x_i_j."""
     def __getitem__(self, i):
-        return subindexer( self._f, i )
+        return indexer_2d_inner( self._f, i )
 
-class reverse_subindexer(indexer):
+class indexer_2d_reverse_inner(indexer):
     def __init__(self, f, j):
 	self._f = f
 	self._j = j
@@ -430,7 +437,12 @@ class indexer_2d_reverse(indexer_2d):
     x_j_i as the other one would do.  Useful when you want a way to
     generate all x_i_j for a given j, as I do."""
     def __getitem__(self, j):
-        return reverse_subindexer( self._f, j )
+        return indexer_2d_reverse_inner( self._f, j )
+
+class const_indexer(indexer):
+    """always return the same value"""
+    def __getitem__(self, i):
+        return self._f
 
 # And now the dynamical systems classes.
 
@@ -521,6 +533,8 @@ class ODESystem(SageObject):
         bound.bind_in_place( *bindings, **args )
         return bound
     def solve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
+	return self.desolve( initial_conditions, start_time, end_time, step)
+    def desolve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
         """Use a numerical solver to find a concrete trajectory of the system.
 
         initial_conditions: list of initial values for the state variables"""
@@ -697,7 +711,7 @@ class ODESystem(SageObject):
             "        return GSL_SUCCESS\n"
             # need c_j() as well?
         )
-        print cython_code
+        #print cython_code
         module = sage.misc.cython.compile_and_load( cython_code )
         T = ode_solver()
         #T.algorithm = 'bsimp'
@@ -900,13 +914,21 @@ class PopulationDynamicsSystem(ODESystem):
         self.set_population_indices(population_indices)
     def population_vars(self):
         return [self._population_indexer[i] for i in self._population_indices]
+    def n_populations(self):
+	return len( self._population_indices )
     # don't set _population_indices directly, call this, to keep the flow in sync
     def set_population_indices(self, xi):
+	print 'set_population_indices:', xi
         self._population_indices = xi
         self._vars = self._nonpop_vars + self.population_vars()
         self._flow = self.flow()
         #self._flow = dict( (k,self._bindings(v)) for k,v in self._flow.items() )
         self._add_hats = None
+    def remove_population(self, i):
+	self.set_population_indices( [ j for j in self._population_indices if j != i ] )
+    def remove_populations(self, ps):
+	sps = set(ps)
+	self.set_population_indices( [ j for j in self._population_indices if j not in sps ] )
     # subclasses have to provide the flow
     def flow(self): pass
     def mutate(self, resident_index):
