@@ -346,9 +346,12 @@ class FunctionBindings(Bindings):
             # and function('f'), since they get interchanged by
             # maxima and pickle operations
             # http://trac.sagemath.org/ticket/17503
-            expr = expr.substitute_function( function(k[0]), v.function( *k[1] ) )
-            expr = expr.substitute_function( function(k[0], nargs=len(k[1])), v.function( *k[1] ) )
-            expr = expr.substitute_function(k,v)
+	    try: expr = expr.substitute_function( function(k[0]), v.function( *k[1] ) )
+	    except AttributeError: pass
+            try: expr = expr.substitute_function( function(k[0], nargs=len(k[1])), v.function( *k[1] ) )
+	    except AttributeError: pass
+            expr = expr.substitute_function(function(k[0]),v)
+            expr = expr.substitute_function(function(k[0],nargs=len(k[1])),v)
             #print ' => ', expr
         return simplify_limits( expr )
     def __deepcopy__(self, _dict):
