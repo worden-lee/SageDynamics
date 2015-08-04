@@ -7,7 +7,7 @@ print MK "# helper makefile automatically generated from $stem.step\n";
 my $products = '';
 while (<STEP>)
 { if (/$commentmark\s*requires:\s*(\S.*)$/i) {
-    print MK "$stem.out $stem.tried : $1\n";
+    print MK "$stem $stem.out $stem.tried : $1\n";
   }
   elsif (/$commentmark\s*produces:\s*(\S.*)$/i) {
     #print MK "$1 : $stem.tried ;\n";
@@ -17,5 +17,5 @@ while (<STEP>)
   print SCRIPT;
 }
 if ($products) {
-  print MK "$stem.out $stem.tried : STEP_PRODUCTS=$products\n";
+  print MK "$stem $stem.out $stem.tried : STEP_PRODUCTS=$products\n";
 }

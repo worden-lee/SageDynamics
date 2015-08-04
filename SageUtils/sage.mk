@@ -31,6 +31,3 @@ sage-gdb :
 	sage -gdb
 
 .PHONY: sage sage-gdb
-
-# experimental: not printing commands while making standalone files
-.SILENT: %.tex-inline.latexml.html %.tex-math.latexml.html
