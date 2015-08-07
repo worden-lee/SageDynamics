@@ -15,13 +15,16 @@ class FiniteDimensionalStochasticDynamics(SageObject):
 	self._vars = vars
 	self._time_variable = time_variable
 	self._bindings = bindings
-    def solve( self, initial_state, start_time=0, end_time=30 ):
+    def solve( self, initial_state, start_time=0, end_time=30, update_fn=None ):
 	t,x = ( start_time, initial_state )
 	soln = []
 	try:
 	    while t <= end_time:
 	        soln.append( tuple( [t] + list(x) ) )
-	        t,x = self.update_time_and_state( t, x )
+		if update_fn is not None:
+			t,x = update_fn( t, x )
+		else
+	        	t,x = self.update_time_and_state( t, x )
 	except StopIteration:
 	    # this happens when we hit an absorbing state
 	    pass
