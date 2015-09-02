@@ -50,7 +50,7 @@ def hat(v):
     latex_name = re.sub( r'^([^_]*)(.*?)$', r'\hat{\g<1>}\g<2>', latex(v) )
     return SR.symbol( name, latex_name=latex_name )
 
-class ODETrajectory(SageObject):
+class Trajectory(SageObject):
     """A trajectory of a system of ordinary differential equations.
 
     This class remembers the ODE that made it, and the symbolic variables
@@ -77,7 +77,7 @@ class ODETrajectory(SageObject):
 	    pass
         self._timeseries = timeseries
     def __repr__(self):
-        return 'ODETrajectory(' + repr(self._timeseries) + ')'
+        return 'Trajectory(' + repr(self._timeseries) + ')'
     def point_to_bindings( self, state ):
         try:
             #print 'is', state, 'a bindings?'
@@ -109,7 +109,7 @@ class ODETrajectory(SageObject):
 	# you can combine trajectories from different models, at your own risk
 	#if self._system is not other._system:
 	#    raise ValueError, "Can't concatenate incompatible trajectories"
-	return ODETrajectory( self._system, self._timeseries + other._timeseries )
+	return Trajectory( self._system, self._timeseries + other._timeseries )
     def make_points(self, xexpr, yexpr):
         # for branching stuff
         # list the evaluations of the expressions at the points,
@@ -327,7 +327,7 @@ class FunctionBindings(Bindings):
                     # if it's a dict { <fn or name>: <fn or expr> }, including
                     # the kind you would use with substitute_function(),
                     # transform it to { (<name>,<args>):<expr> }
-                    self.update( { (str(k),v.arguments()):SR(v) for k,v in a.items() } )
+                    self.update( { (str(k),SR(v).arguments()):SR(v) for k,v in a.items() } )
                 except ValueError:
                     print 'Unrecognized initializer for bindings:', a
     def __repr__(self):
@@ -548,12 +548,15 @@ class ODESystem(SageObject):
           self._time_variable,
           end_time,
           step )
+	print "initial flow:", [ self._flow[x].subs( **( { str(k):v for k,v in zip([self._time_variable] + self._vars, [start_time] + initial_conditions ) } ) ) for x in self._vars ]
         soln = desolve_system_rk4(
           [self._flow[v] for v in self._vars],
           self._vars, [start_time] + initial_conditions,
           ivar=self._time_variable,
           end_points=end_time, step=step )
-        return ODETrajectory(self, soln)
+        #return Trajectory(self, soln)
+	# this seems to help when sympy is involved
+	return Trajectory(self, [ [N(z) for z in l] for l in soln ])
     def plot_vector_field(self, xlims, ylims, filename='', vf=None, xlabel=-1, ylabel=-1, **args):
         xlims = tuple( self._bindings.substitute( v ) for v in xlims )
         ylims = tuple( self._bindings.substitute( v ) for v in ylims )
@@ -733,7 +736,7 @@ class ODESystem(SageObject):
             num_points = (end_time - start_time) / step + 1,
             y_0 = initial_conditions
         )
-        return ODETrajectory( self, ( [ t ] + ys for t,ys in self._gsl_system.solution ) )
+        return Trajectory( self, ( [ t ] + ys for t,ys in self._gsl_system.solution ) )
         return self._gsl_system.solution
 
 # used by NumericalODESystem.solve()
@@ -758,7 +761,7 @@ def fake_odeint(system, y0, t, args=None, Dfun=None):
             y.append(ig.integrate(tt))
         except (EquilibriumDetectedException,UnboundedDynamicsException) as ex:
             raise TrajectoryInterruptedException(
-                ODETrajectory(
+                Trajectory(
                     system,
                     [ [tt]+list(point) for tt,point in zip(t,y) ]
                 ),
@@ -791,7 +794,7 @@ class NumericalODESystem( ODESystem ):
         timeseries = [ dict( (k,v) for k,v in
           zip([self._time_variable]+self._vars,[t]+list(point)) )
           for t, point in zip(times, soln) ]
-        return ODETrajectory(self, timeseries)
+        return Trajectory(self, timeseries)
     def compute_flow(self, y, t):
         # provide this in a subclass.  It needs to return a numpy array of
         # floats providing the dy/dt vector matching the y argument.

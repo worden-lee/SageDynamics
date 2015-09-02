@@ -70,7 +70,10 @@ class AdaptiveDynamicsModel(ODESystem):
           calculations - and then expand that out to the value of r_i in
           late_bindings, and get the right answer without bogging the
           computer down."""
-        self._debug_output = latex_output_base( write_to_string() )
+	try:
+		self._debug_output
+	except AttributeError:
+		self._debug_output = latex_output_base( write_to_string() )
         self._popdyn_model = popdyn_model
         self._phenotype_indexers = phenotype_indexers
         self._early_bindings = early_bindings
@@ -103,7 +106,7 @@ class AdaptiveDynamicsModel(ODESystem):
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write_block( self )
         self._debug_output.close()
-        print self._debug_output._output._str
+        #print self._debug_output._output._str
     def calculate_adaptive_dynamics(self):
         # We get the invasion exponent for u_i by adding an extra population,
         # which will soon be asymptotically identical to u_i.
@@ -184,14 +187,15 @@ class AdaptiveDynamicsModel(ODESystem):
         # separately from each other
         return self._popdyn_model.fake_population_index()
     def solve(self, initial_conditions, **opts):
+	continue_on_extinction = False #opts.pop( 'continue_on_extinction', False )
         # check that initial populations are positive
         icbind = Bindings( { v:iv for v, iv in zip(self._vars, initial_conditions) } )
         if any( icbind(self._bindings(x)) <= 0 for x in self._popdyn_model.equilibrium_vars() ):
 	    print ( 'Aborting solve: initial population sizes are non-positive:',
-                str( [ x == N(_t(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] ) )
+                str( [ x == N(icbind(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] ) )
             raise AdaptiveDynamicsException(
                 'Initial population sizes are non-positive: ' +
-                str( [ x == N(_t(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] )
+                str( [ x == N(icbind(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] )
             )
         trajectory = super(AdaptiveDynamicsModel,self).solve(initial_conditions, **opts)
         # check that populations stay positive
@@ -199,16 +203,22 @@ class AdaptiveDynamicsModel(ODESystem):
         print 'timeseries:', trajectory._timeseries
         print 'X at first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
         for i in range(len(trajectory._timeseries)):
-            if any( N(trajectory._timeseries[i](x)) <= 0 for x in xs ):
-                print 'Adaptive dynamics cut short by extinction at ' + str( trajectory._timeseries[i] )
-		#print '_timeseries[i]:', trajectory._timeseries[i]
-		#print 'maps', { x:self._bindings(x) for x in self._popdyn_model.equilibrium_vars() }
-		#print 'to', { x:trajectory._timeseries[i](self._bindings(x)) for x in self._popdyn_model.equilibrium_vars() }
-                trajectory._timeseries = trajectory._timeseries[:i]
-                break
+	    exts = [ x for x in xs if N(trajectory._timeseries[i](x)) <= 0 ]
+            if len( exts ) > 0:
+		if not continue_on_extinction:
+                    print 'Adaptive dynamics cut short by extinction at ' + str( trajectory._timeseries[i] )
+		    #print '_timeseries[i]:', trajectory._timeseries[i]
+		    print 'at which, with', { x:self._bindings(x) for x in self._popdyn_model.equilibrium_vars() }
+		    print 'X values are', { x:trajectory._timeseries[i](self._bindings(x)) for x in self._popdyn_model.equilibrium_vars() }
+		    tsi = Bindings( { k:N(v) for k,v in trajectory._timeseries[i].iteritems() } )
+		    print 'with', tsi
+		    print 'equivalently ', { x:tsi(self._bindings(x)) for x in self._popdyn_model.equilibrium_vars() }
+		    print 'WTF', [ type(v) for v in trajectory._timeseries[i].values() ], '<-->', [ type(v) for v in tsi.values() ]
+                    trajectory._timeseries = trajectory._timeseries[:i]
+                    break
+		else: # this needs some thought
+		    pass #for ix in self._
         return trajectory
-
-import numpy # do this now, not during compute_flow
 
 class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel ):
     """Where AdaptiveDynamicsModel derives a closed expression for the
@@ -290,6 +300,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         #print 'eq flow:', eq( self._flow[self._vars[0]] )
         #print 'u eq flow:', [ u_bindings( eq( self._flow[v] ) ) for v in self._vars ]
         #sys.stdout.flush()
+	import numpy
         try:
             dudt = numpy.array( [ N( u_bindings( eq( self._flow[v] ) ) ) for v in self._vars ], float )
         except TypeError:
@@ -316,7 +327,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
                 branched_state = self.test_for_branch( traj )
                 if branched_state:
                     rest = self.solve( [ branched_state[v] for v in self._vars ], self._equilibrium_detected_at, end_time, step )
-                    bt = ODETrajectory( self, traj._timeseries + rest._timeseries )
+                    bt = traj + ODETrajectory( self, rest._timeseries )
                     #print 'composite trajectory after branching:', bt
                     return bt
                 # if we're at equilibrium and didn't branch, skip ahead
@@ -358,6 +369,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
                 # test for whether they diverge
                 try:
                     #print 'test for branch at state', branched_state
+		    import numpy
                     flow = branched_ad.compute_flow( numpy.array( [ branched_state[v] for v in branched_ad._vars ], float ), self._equilibrium_detected_at )
                 except AdaptiveDynamicsException: #nope
                     #print 'exception!'
