@@ -244,6 +244,10 @@ class Bindings(dict):
         return '%s%s' % ( ' \\\\\n'.join( '  %s &\\to %s' % (latex(key), latex(val)) for key, val in self.items() ), flx )
     def substitute(self, expr):
         """Apply the bindings to an expression"""
+	# if it has a bind method, use that
+	try:
+	    return expr.bind( self )
+	except AttributeError: pass
         # if it's a Bindings or dict, apply ourself to all the values
         try:
             return expr.__class__( { k:self.substitute(v) for k,v in expr.items() } )
@@ -540,7 +544,9 @@ class ODESystem(SageObject):
     def desolve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
         """Use a numerical solver to find a concrete trajectory of the system.
 
-        initial_conditions: list of initial values for the state variables"""
+        initial_conditions: list or Bindings of initial values for the state variables"""
+	try: initial_conditions = [ initial_conditions(x) for x in self._vars ]
+	except TypeError: pass
         print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
           [self._flow[v] for v in self._vars],
           self._vars,
