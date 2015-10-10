@@ -612,7 +612,6 @@ class ODESystem(SageObject):
         add_hats = self.add_hats()
 	equil_vars = self.equilibrium_vars()
 	if solve_numerically:
-	    rhss = [ add_hats(rhs) for rhs in self._flow.values() ]
 	    ranges = { l[0]:l[1:] for l in ranges }
             def grid_range( var ):
                 try:
@@ -620,14 +619,16 @@ class ODESystem(SageObject):
                 except (TypeError, AttributeError):
                     return numpy.arange( -1, 1.01, 0.5 )
             grid_ranges = ( grid_range(var) for var in self._vars )
-	    def veceval(vec):
+	    flows = [ add_hats(rhs) for rhs in self._flow.values() ]
+	    def flowfun(vec):
 		dic = { x:v for x,v in zip(equil_vars,vec) }
-		return [ r.subs( dic ) for r in rhss ]
+		return [ f.subs( dic ) for f in flows ]
 	    sols = set()
 	    import itertools, scipy.optimize
             for grid_point in itertools.product( *grid_ranges ):
-		res = scipy.optimize.root( veceval, grid_point )
-		if res.success:
+		res = scipy.optimize.root( flowfun, grid_point )
+		## caution: res.success is reporting false positives!
+		if res.success and all( round(f,ndigits=5)==0 for f in res.fun ):
 	            sols.add( tuple( [ round(N(x),ndigits=5) for x in res.x ] ) )
 	    equilibria = [ dict( zip( equil_vars,sol ) ) for sol in sols ]
 	else:
