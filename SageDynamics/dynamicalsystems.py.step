@@ -607,10 +607,32 @@ class ODESystem(SageObject):
     def equilibrium_vars(self):
         add_hats = self.add_hats()
         return [ add_hats(v) for v in self._vars ]
-    def equilibria(self):
+    def equilibria(self, *ranges, **opts):
+	solve_numerically = opts.get('solve_numerically',False)
         add_hats = self.add_hats()
-        equil_eqns = [ 0 == add_hats(rhs) for rhs in self._flow.values() ]
-        equilibria = solve( equil_eqns, *self.equilibrium_vars(), solution_dict=True )
+	equil_vars = self.equilibrium_vars()
+	if solve_numerically:
+	    rhss = [ add_hats(rhs) for rhs in self._flow.values() ]
+	    ranges = { l[0]:l[1:] for l in ranges }
+            def grid_range( var ):
+                try:
+                    return numpy.arange( *ranges[var] )
+                except (TypeError, AttributeError):
+                    return numpy.arange( -1, 1.01, 0.5 )
+            grid_ranges = ( grid_range(var) for var in self._vars )
+	    def veceval(vec):
+		dic = { x:v for x,v in zip(equil_vars,vec) }
+		return [ r.subs( dic ) for r in rhss ]
+	    sols = set()
+	    import itertools, scipy.optimize
+            for grid_point in itertools.product( *grid_ranges ):
+		res = scipy.optimize.root( veceval, grid_point )
+		if res.success:
+	            sols.add( tuple( [ round(N(x),ndigits=5) for x in res.x ] ) )
+	    equilibria = [ dict( zip( equil_vars,sol ) ) for sol in sols ]
+	else:
+            equil_eqns = [ 0 == add_hats(rhs) for rhs in self._flow.values() ]
+            equilibria = solve( equil_eqns, *self.equilibrium_vars(), solution_dict=True )
         #equilibria = [ { k:(v) for k,v in soln.items() } for soln in solns ]
         return equilibria
     def interior_equilibria(self):
