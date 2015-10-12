@@ -23,13 +23,13 @@ class FiniteDimensionalStochasticDynamics(SageObject):
 	        soln.append( tuple( [t] + list(x) ) )
 		if update_fn is not None:
 			t,x = update_fn( t, x )
-		else
+		else:
 	        	t,x = self.update_time_and_state( t, x )
 	except StopIteration:
 	    # this happens when we hit an absorbing state
 	    pass
 	#print 'soln:', soln
-	return dynamicalsystems.ODETrajectory( self, soln )
+	return dynamicalsystems.Trajectory( self, soln )
     def update_time_and_state( self, t, x ):
 	raise NotImplementedError, "Child class of FiniteDimensionalStochasticDynamics needs to implement update_time_and_state()"
 
