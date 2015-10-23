@@ -150,7 +150,7 @@ class Trajectory(SageObject):
             P = None
 	    colors = rainbow( len( yexpr ) )
             for y in yexpr:
-                p = self.plot( xexpr, y, color=colors.pop(), legend_label=latex(y), **args )
+                p = self.plot( xexpr, y, color=colors.pop(), legend_label='$%s$'%latex(y), **args )
                 if P is None:
                     P = p
                 else:
@@ -166,14 +166,12 @@ class Trajectory(SageObject):
             )
         if (xlabel == -1): xlabel = xexpr
         if (ylabel == -1): ylabel = yexpr
-        try:
-            xlabel.expand() # find out if it's an expression object
+	try: basestring
+	except NameError: basestring=str
+	if not isinstance( xlabel, basestring ):
             xlabel = '$%s$' % latex(xlabel)
-        except AttributeError: pass # if it's a string, leave it alone
-        try:
-            ylabel.expand()
+	if not isinstance( ylabel, basestring ):
             ylabel = '$%s$' % latex(ylabel)
-        except AttributeError: pass
         P.axes_labels( [xlabel,ylabel] )
         if (filename != ''):
             P.save(filename)
@@ -626,6 +624,7 @@ class ODESystem(SageObject):
 	    sols = set()
 	    import itertools, scipy.optimize
             for grid_point in itertools.product( *grid_ranges ):
+		print grid_point; sys.stdout.flush()
 		res = scipy.optimize.root( flowfun, grid_point )
 		## caution: res.success is reporting false positives!
 		if res.success and all( round(f,ndigits=5)==0 for f in res.fun ):
