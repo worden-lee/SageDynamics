@@ -6,11 +6,12 @@ class HamiltonianODE(dynamicalsystems.ODESystem):
         self._H = H
         self._configuration_vars = x_vars
         self._momentum_vars = p_vars
+	import itertools
         super(HamiltonianODE,self).__init__(
             dict( { x:diff(H,p) for x,p in zip(x_vars,p_vars) },
                 **{ p:-diff(H,x) for x,p in zip(x_vars,p_vars) }
             ),
-            x_vars + p_vars,
+            list( itertools.chain( x_vars, p_vars ) ),
             time_variable=time_variable,
             bindings=bindings
         )
@@ -18,6 +19,7 @@ class HamiltonianODE(dynamicalsystems.ODESystem):
     def equilibria( self, *ranges, **opts ):
 	if opts.get( 'solve_numerically', False ):
 	    return super(HamiltonianODE,self).equilibria( *ranges, **opts )
+	constraints = opts.get( 'constraints', [] )
 	## special solving procedure, taking into account the exponential
 	## form in p.
 	## note this may be applicable only to box hamiltonians.  Consider
@@ -26,7 +28,7 @@ class HamiltonianODE(dynamicalsystems.ODESystem):
 	ui = dynamicalsystems.indexer('u')
 	u_vars = [ ui[i] for i,p in enumerate( self._momentum_vars ) ]
 	p_subs = { add_hats(p):log(u) for u,p in zip(u_vars, self._momentum_vars) }
-	u_eqns = [ 0 == add_hats(rhs).subs(p_subs).canonicalize_radical() for rhs in self._flow.itervalues() ]
+	u_eqns = [ 0 == add_hats(rhs).subs(p_subs).canonicalize_radical() for rhs in self._flow.itervalues() ] + [ c.operator()( add_hats(self._bindings( c.lhs() ) ).subs(p_subs).canonicalize_radical(), add_hats( self._bindings( c.rhs() ) ).subs(p_subs).canonicalize_radical() ) for c in constraints ]
 	import sys
 	print u_eqns; sys.stdout.flush()
 	u_sols = solve(
