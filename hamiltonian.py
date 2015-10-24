@@ -16,6 +16,10 @@ class HamiltonianODE(dynamicalsystems.ODESystem):
             bindings=bindings
         )
         print 'time_var is', self._time_variable
+    def bind_in_place(self, *largs, **dargs):
+	b = dynamicalsystems.Bindings( *largs, **dargs )
+	super(HamiltonianODE,self).bind_in_place( b )
+	self._H = b(self._H)
     def equilibria( self, *ranges, **opts ):
 	if opts.get( 'solve_numerically', False ):
 	    return super(HamiltonianODE,self).equilibria( *ranges, **opts )
