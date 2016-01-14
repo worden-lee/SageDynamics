@@ -13,14 +13,16 @@ from sage.misc.latex import latex
 def limits(expr, lims):
     for x,y in lims.items():
         args = {str(x):y}
-        #print 'limit', args, expr
+        print 'limit', args, expr
         expr = limit(expr, **args)
-        #print ' =>',expr
+        print ' =>',expr
     # hacky workaround for maxima bug - if they don't get limited,
     # just substitute them.  This may produce wrong output.  We're already
     # getting wrong output, so this just makes it wrong less of the time.
     # Not ideal, but useful for now.
-    expr = expr.subs( lims )
+    #expr = expr.subs( lims )
+    expr = simplify_limits( expr ) # nice fn from dynamicalsystems
+    print 'simplify to', expr
     return expr
 
 class AdaptiveDynamicsException(DynamicsException):

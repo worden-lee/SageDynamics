@@ -34,9 +34,9 @@ class TrajectoryInterruptedException(DynamicsException):
         self._reason = reason
         Exception.__init__( self, 'Integration of dynamics interrupted' )
 
-def hat(v):
-    """little utility function to add a hat to a Sage variable, e.g.
-    make X_i into \hat{X}_i."""
+def xform_symbol(v, xform_str, xform_latex):
+    """little utility function to do things like add a hat or similar thing
+    to a Sage variable, e.g. make X_i into \hat{X}_i."""
     try:
         # is it a symbol?
         if not v.is_symbol():
@@ -46,9 +46,26 @@ def hat(v):
         # it's a string
         v = SR.symbol(v)
     import re
-    name = re.sub( '^([^_]*)(.*?)$', r'\g<1>hat\g<2>', str(v) )
-    latex_name = re.sub( r'^([^_]*)(.*?)$', r'\hat{\g<1>}\g<2>', latex(v) )
+    name = str(v)
+    mn = re.match( '^([^^_]*)(.*?)$', name )
+    if mn: name = xform_str( mn.group(1), mn.group(2) )
+    #name = re.sub( '^([^_]*)(.*?)$', r'\g<1>'+flair+'\g<2>', str(v) )
+    latex_name = latex(v)
+    #latex_name = re.sub( r'^([^_]*)(.*?)$', r'\\'+flair+'{\g<1>}\g<2>', latex(v) )
+    ml = re.match( r'^([^^_]*)(.*?)$', latex_name )
+    latex_name = xform_latex( ml.group(1), ml.group(2) )
     return SR.symbol( name, latex_name=latex_name )
+
+def add_flair(v, flair):
+    def xform_str( base, subs ): return base + flair + subs
+    def xform_latex( base, subs ): return r'\\' + flair + '{' + base + '}' + subs
+    return xform_symbol(v, xform_str, xform_latex)
+
+def hat(v):
+    return add_flair(v, 'hat')
+
+def dot(v):
+    return add_flair(v, 'dot')
 
 class Trajectory(SageObject):
     """A trajectory of a system of ordinary differential equations.
@@ -115,9 +132,13 @@ class Trajectory(SageObject):
         # list the evaluations of the expressions at the points,
         # only at the ones where they both evaluate to numbers
         points = []
+        xexpr = self._system._bindings(xexpr)
+        yexpr = self._system._bindings(yexpr)
         for p in self._timeseries:
             try:
+		print p,':',
                 tup = (N(p(xexpr)), N(p(yexpr)))
+		print tup
                 points += [ tup ]
             except TypeError: pass
         return points
@@ -272,8 +293,9 @@ class Bindings(dict):
     # todo: merge() is akin to ODEsystem's bind(): it produces a bound copy
     # while bind() is akin to ODEsystem's bind_in_place(): it modifies self
     # this is problematic
-    def bind(self, *args, **named_args):
-        #print 'merge bindings:', self, ',', list(*args), ', ', dict(**named_args)
+    # in fact, unacceptable. fixed.
+    def bind_in_place(self, *args, **named_args):
+        print 'merge bindings:', self, ',', list(*args), ', ', dict(**named_args)
         other = Bindings(*args, **named_args)
         #for k, v in self.items():
         #    self[k] = other.substitute(v)
@@ -284,12 +306,14 @@ class Bindings(dict):
             other._function_bindings.merge_into_function_bindings(self)
         self.apply_to_self()
         return self
+    def bind(self, *args, **xrgs):
+	return deepcopy(self).bind_in_place( *args, **xrgs )
     def merge(self, other={}, **args):
         """Combine with another set of bindings.  We assume that self is the
         bindings that have already been applied, and the other bindings are
         being applied afterward.  Thus self's bindings take priority, if there's
         any potential conflict."""
-        return deepcopy(self).bind(other, **args)
+        return deepcopy(self).bind_in_place(other, **args)
     def __add__(self, other):
         return self.merge(other)
     def apply_to_self(self):
@@ -314,24 +338,29 @@ class FunctionBindings(Bindings):
     that parameters sometimes depend on other things."""
     def __init__(self, *args, **named_args):
         for a in list( args ) + [ named_args ]:
-            # don't store as before-and-after functions due to
-            # function-pickling woes
-            # http://trac.sagemath.org/ticket/17558
-            # store as (function name, argument list): return value
-            # i.e. with no function objects stored
-            try:
-                # if it's a FunctionBindings or other dict { (<name>,<args>): <expr> }
-                # it's tricky to exclude string-valued ks from this
-                def rterr(): raise TypeError
-                self.update( { (isinstance(k,tuple) and k or rterr()):v for k,v in a.items() } )
-            except (TypeError, ValueError):
+	    for k,v in a.items():
+                # don't store as before-and-after functions due to
+                # function-pickling woes
+                # http://trac.sagemath.org/ticket/17558
+                # store as (function name, argument list): return value
+                # i.e. with no function objects stored
                 try:
-                    # if it's a dict { <fn or name>: <fn or expr> }, including
-                    # the kind you would use with substitute_function(),
-                    # transform it to { (<name>,<args>):<expr> }
-                    self.update( { (str(k),SR(v).arguments()):SR(v) for k,v in a.items() } )
-                except ValueError:
-                    print 'Unrecognized initializer for bindings:', a
+                    # if it's a FunctionBindings or other dict { (<name>,<args>): <expr> }
+                    # it's tricky to exclude string-valued ks from this
+                    def rterr(): raise TypeError
+                    self.update( { (isinstance(k,tuple) and k or rterr()):v } )
+                except (TypeError, ValueError):
+                    try:
+                        # if it's a dict { <fn or name>: <fn or expr> }, including
+                        # the kind you would use with substitute_function(),
+                        # transform it to { (<name>,<args>):<expr> }
+                        self.update( { (str(k),SR(v).arguments()):SR(v) } )
+		    except TypeError:
+		        # this comes up if it's a Piecewise object
+		        # not sure what else
+		        self.update( { (str(k),()):v } )
+                    except ValueError:
+                        print 'Unrecognized initializer for bindings:', {k:v}
     def __repr__(self):
         # would like to use unicode arrow u'\u2192' but causes output codec error
         return ', '.join( '%s(%s) %s %s' % (key[0], ','.join( str(k) for k in key[1] ), '->', str(val)) for key,val in self.items() )
@@ -492,9 +521,8 @@ class ODESystem(SageObject):
         return other
     def _latex_(self):
         """Output the system as a system of differential equations in LaTeX form"""
-        return self._text_latex_() # not correct in math mode!
-        return '\\mbox{' + self._text_latex_() + '}'
-    def _text_latex_(self):
+        return self.latex_text() # not correct in math mode!
+    def latex_text(self):
         return ('\\iflatexml\n' +
 	    '\\begin{align*}\n' + '\\\\\n'.join(
             r'\frac{d%s}{d%s} &= %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
@@ -511,9 +539,16 @@ class ODESystem(SageObject):
 	else:
 	    import latex_output
             ltxout = latex_output.latex_output( filename )
-        ltxout.write( self._text_latex_() )
+        ltxout.write( self.latex_text() )
         ltxout.write( '\n\\vspace{24pt}\n' )
         ltxout.close()
+    def flow( self, at=None ):
+	if at is None: at = self._vars
+	try:
+	    at( self._vars[0] )
+	except TypeError: # if it's not a Bindings, make it one
+	    at = Bindings( zip( self._vars, at ) )
+	return vector( [ at(self._flow[v]) for v in self._vars ] )
     def time_variable(self):
         """Provide the independent variable, for instance for plotting"""
         return self._time_variable
@@ -523,7 +558,7 @@ class ODESystem(SageObject):
         See bind(), below."""
         binding = Bindings( *bindings, **args )
         self._flow = { k:binding(v) for k,v in self._flow.items() }
-        self._bindings = self._bindings.merge(binding)
+        self._bindings = self._bindings + binding
     def bind(self, *bindings, **args):
         """If you create a system with various symbolic parameters, like
         dy/dt = ay^2 + by + c, or something, you can't numerically
@@ -537,14 +572,18 @@ class ODESystem(SageObject):
         bound = deepcopy( self )
         bound.bind_in_place( *bindings, **args )
         return bound
-    def solve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
-	return self.desolve( initial_conditions, start_time, end_time, step)
-    def desolve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
+    def solve(self, initial_conditions, end_time=20, start_time=0, step=0.1):
+	return self.desolve( initial_conditions, start_time=start_time, end_time=end_time, step=step)
+    def desolve(self, initial_conditions, end_time=20, start_time=0, step=0.1):
         """Use a numerical solver to find a concrete trajectory of the system.
 
         initial_conditions: list or Bindings of initial values for the state variables"""
+	## if initial_conditions is a Bindings, make a list
 	try: initial_conditions = [ initial_conditions(x) for x in self._vars ]
-	except TypeError: pass
+	except TypeError: 
+	    ## or if it's a dict, make a list
+	    try: initial_conditions = [ initial_conditions[x] for x in self._vars ]
+	    except TypeError: pass
         print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
           [self._flow[v] for v in self._vars],
           self._vars,
@@ -605,6 +644,32 @@ class ODESystem(SageObject):
     def equilibrium_vars(self):
         add_hats = self.add_hats()
         return [ add_hats(v) for v in self._vars ]
+    def symbolic_equilibria( self ):
+	return self.add_hats()
+    def limit( self, **lims ):
+	"""limit( var=val, ... ):
+	Return a transformed dynamical system, equal to this system with the
+	specified limits applied.
+	Can perform multiple transformations including
+	* Separate fast and slow timescales by changing parameters to
+	  zero, infinite values, or other threshold values
+	* Extract subsystems or other limiting cases by changing state
+	  variables to zero, or infinite or other values.
+	These functionalities will be implemented as needed."""
+	return deepcopy(self).limit_in_place( **lims )
+    def limit_in_place( self, **lims ):
+	for k,v in lims.iteritems():
+	    ksr = SR(k)
+	    if ksr.is_symbol():
+		self._vars = [ x for x in self._vars if x != ksr ]
+		## to do: specialized version of this in BoxModel, to
+		## make transitions collapse to identity of boxes, and
+		## to change finite boxes to infinite sources, etc.
+		self._flow = { x:self._flow[x].limit( **{k:v} ) for x in self._vars }
+		self._bindings[ksr] = v
+	    else:
+		raise ValueError, "Not skillful enough to take limit {0} -> {1}".format( str(k), str(v) )
+	return self
     def equilibria(self, *ranges, **opts):
 	solve_numerically = opts.get('solve_numerically',False)
         add_hats = self.add_hats()
@@ -625,7 +690,7 @@ class ODESystem(SageObject):
 	    import itertools, scipy.optimize
             for grid_point in itertools.product( *grid_ranges ):
 		print grid_point; sys.stdout.flush()
-		res = scipy.optimize.root( flowfun, grid_point )
+		res = scipy.optimize.root( flowfun, grid_point, tol=1e-10 )
 		## caution: res.success is reporting false positives!
 		if res.success and all( round(f,ndigits=5)==0 for f in res.fun ):
 	            sols.add( tuple( [ round(N(x),ndigits=5) for x in res.x ] ) )

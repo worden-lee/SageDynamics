@@ -25,49 +25,120 @@ r'''\oddsidemargin 0.0in
 \textheight 9.0in
 ''')
 
+## two variants of latex(thing) allowing for text mode vs. math mode
+## implementations
+def latex_math( o ):
+    if isinstance(o, basestring): return o
+    try: return o.latex_math()
+    except AttributeError: return latex( o )
+
+def latex_text( o ):
+    if isinstance(o, basestring): return o
+    try: return o.latex_text()
+    except AttributeError: return '$' + latex_math(o) + '$'
+
 class latex_output_base(SageObject):
     '''latex_output: class that can collect latex output and do some formatting'''
     def __init__(self, _output):
         self._output = _output
-    def latex(self, a):
-        if isinstance(a, basestring):
-            return a
-        return latex(a)
     def write(self, *args):
         '''Output text directly.  Unlike file.write() (apparently), we support
         multiple arguments to write().'''
+	## note this used to use the latex() rather than latex_text(), which
+	## is a breaking change.  calling code that uses this in text mode will
+	## now get different and likely broken output.
         for a in args:
-            self._output.write( self.latex( a ) )
+            self._output.write( latex_text( a ) )
         return self;
     def write_inline(self, *args):
         '''Output latex representation of each argument, inline in math mode'''
         for o in args:
-            self.write( '$%s$' % self.latex(o) )
+            self.write( latex_math(o) )
         return self;
     def write_block(self, *args):
         '''Output latex representation of each argument, set apart in \\[ \\]'''
+	## note doesn't really work for multiple rows - use write_align
         self.write( '\n\\[' )
-        self.write( '\\\\\n'.join( self.latex(o) for o in args ) )
+        self.write( '\\\\\n'.join( latex_math(o) for o in args ) )
         self.write( '\\]\n' )
         return self
     def write_environment(self, envname, *stuff):
         return self.write(
             '\n\\begin{', envname, '}\n  ',
-            '\\\\\n  '.join( self.latex(a) for a in stuff ),
+            '\\\\\n  '.join( latex_math(a) for a in stuff ),
             '\n\\end{', envname, '}\n'
         )
     def write_align( self, *stuff ):
         return self.write_environment( 'align*', *stuff )
     def write_equality(self, *args):
-        return self.write( '\n\\[\n  ', ' = '.join( self.latex(a) for a in args ), '\n\\]\n' )
+        return self.write( '\n\\[\n  ', ' = '.join( latex_math(a) for a in args ), '\n\\]\n' )
+    def write_equation(self, *args):
+        return self.write_equality( *args )
     def write_equality_aligned(self, *args):
         '''For convenience: write that one thing is equal to another (or more).
         This is because write_block( a == b ) often just writes "false"...'''
         return self.write_environment( 'align*',
-	    self.latex(args[0]) + ' &= ' + '\\\\\n    &= '.join( self.latex(a) for a in args[1:] ) );
+	    self.latex(args[0]) + ' &= ' + '\\\\\n    &= '.join( latex_math(a) for a in args[1:] ) );
     def close(self):
         self._output.close()
         return self;
+
+def environment( envname, *stuff, **keywords ):
+    outer_mode=keywords.pop( 'outer_mode', 'text')
+    inner_mode=keywords.pop( 'inner_mode', 'math' )
+    l_fn = (latex_math if inner_mode == 'math' else latex_text)
+    return wrap_latex( 
+        '\n\\begin{' + envname + '}\n  ' +
+        '\\\\\n  '.join( l_fn(a) for a in stuff ) +
+        '\n\\end{' + envname + '}\n',
+        outer_mode
+    )
+
+def align_eqns( *stuff ):
+    return environment( 'align*',
+	wrap_latex( latex_math( stuff[0] ) + ' &= ' +
+	    '\\\\\n  &= '.join( latex_math( a ) for a in stuff[1:] ),
+	    'math'
+	)
+    )
+
+def dgroup_eqns( *stuff ):
+    ## write latex for a group of aligned equations using dgroup
+    ## to do: refactor using dgroup() below, with some kind of
+    ## equation class?
+    return wrap_latex(
+	'\\iflatexml\n' +
+	## use align* instead when using latexml
+	latex_text( align_eqns( *stuff ) ) +
+	'\\else\n' +
+	latex_text(
+	    environment( 'dgroup*',
+	        environment( 'dmath*',
+		    latex_math( stuff[0] ) + ' = ' + latex_math( stuff[1] ),
+		    outer_mode='math'
+	        ),
+	        *[ environment( 'dmath*',
+		    ' = ' + latex_math( s ),
+		    outer_mode='math'
+	        ) for s in stuff[2:] ]
+	    )
+        ) +
+	'\\fi\n',
+	'text'
+    )
+
+def dgroup( *stuff ):
+    ## latex for a list of objects, aligned using dgroup
+    return wrap_latex(
+	'\\iflatexml\n' +
+	latex_text( environment( 'align*', stuff ) ) +
+	'\\else\n' +
+	latex_text( environment( 'dgroup*',
+	    *[ environment( 'dmath*', s, outer_mode='math') for s in stuff[2:] ]
+	) ) +
+	'\\fi\n',
+	'text'
+    )
 
 class latex_output_file(latex_output_base):
     '''latex_output_file: class to write a latex file.
@@ -103,11 +174,17 @@ def latex_output( filename ):
 class wrap_latex( SageObject ):
     '''A helper class for inserting literal latex code into a context that requires
     an object with a latex() method'''
-    # maybe not needed any more?
-    def __init__(self, text):
+    def __init__(self, text, mode='math'):
         self._str = text
+	self._mode = mode
     def _latex_(self):
         return self._str
+    def latex_math(self):
+	if self._mode == 'math': return self._str
+	else: raise TypeError, 'Object does not have a math-mode LaTeX representation'
+    def latex_text(self):
+	if self._mode == 'math': return '$'+self._str+'$'
+	else: return self._str
 
 # TODO: integrate with stuff above
 def write_tex_inline( vname, lname=None, fname=None, bindings=None ):

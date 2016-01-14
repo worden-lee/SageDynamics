@@ -20,6 +20,35 @@ class HamiltonianODE(dynamicalsystems.ODESystem):
 	b = dynamicalsystems.Bindings( *largs, **dargs )
 	super(HamiltonianODE,self).bind_in_place( b )
 	self._H = b(self._H)
+    def extend_with_s(self, s=SR.symbol('s')):
+	self._s_var = s
+	self._vars += [s]
+	self._flow[s] = self.lagrangian()
+	return self
+    def lagrangian(self):
+	## note this is the lagrangian in terms of x and p - it should
+	## really be in terms of x and \dot{x}, which is harder
+	return sum( p*self._flow[x] for x,p in zip(self._configuration_vars,self._momentum_vars) ) - self._H
+    def transformed_hamiltonian(self):
+	## transformation from x,p to w,s introduced by
+	## Hu, Phys.Rev.A, 36:12, 5782--5790
+	try: self._H_hu
+	except AttributeError:
+	    sx = lambda b,s: 's'+s
+	    ss = [ dynamicalsystems.xform_symbol( pi, sx, sx ) for pi in self._momentum_vars ]
+	    sub_dict = { pi:log(si) for pi,si in zip( self._momentum_vars, ss ) }
+	    wx = lambda b,s: 'w'+s
+	    ws = [ dynamicalsystems.xform_symbol(xi,wx,wx) for xi in self._configuration_vars ]
+	    if set( ws ) == set( [ws[0]] ):
+		wx = lambda b,s: 'w_'+b+s
+		ws = [ dynamicalsystems.xform_symbol(xi,wx,wx) for xi in self._configuration_vars ]
+	    sub_dict.update( {
+	        xi:-si * wi
+	        for xi,si,wi in zip(self._configuration_vars,ss,ws)
+	    } )
+	    self._hu_bindings = dynamicalsystems.Bindings( sub_dict )
+	    self._H_hu = self._hu_bindings( self._H ).canonicalize_radical()
+	return self._H_hu
     def equilibria( self, *ranges, **opts ):
 	if opts.get( 'solve_numerically', False ):
 	    return super(HamiltonianODE,self).equilibria( *ranges, **opts )
