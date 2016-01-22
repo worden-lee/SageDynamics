@@ -1,6 +1,9 @@
-SageDynamics/dynamicalsystems.py
-SageAdaptiveDynamics/adaptivedynamics.py
 *.pyc
 *.py.mk
 GNUmakefile
 .workingwiki
+/dist/
+/*.egg-info
+/_site/
+/wmd_files/
+_wmd_sync.yml
