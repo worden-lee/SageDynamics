@@ -1,10 +1,5 @@
-# requires: $(SageDynamics)/dynamicalsystems.py $(SageDynamics)/latex_output.py
 from sage.all import *
-import os
-import sys
-sys.path.append( os.environ['SageDynamics'] )
 from dynamicalsystems import *
-from latex_output import *
 
 from sage.symbolic.relation import solve
 from sage.calculus.calculus import limit
