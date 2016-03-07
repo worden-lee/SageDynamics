@@ -4,6 +4,8 @@ from string import join
 from sage.misc.latex import _latex_file_
 latex.add_to_preamble('\\usepackage{amsmath}')
 
+from latex_output import *
+
 # =============================================================================
 # Core functions and classes for dynamical systems processing in Sage
 # =============================================================================
@@ -33,39 +35,6 @@ class TrajectoryInterruptedException(DynamicsException):
         self._trajectory = trajectory
         self._reason = reason
         Exception.__init__( self, 'Integration of dynamics interrupted' )
-
-def xform_symbol(v, xform_str, xform_latex):
-    """little utility function to do things like add a hat or similar thing
-    to a Sage variable, e.g. make X_i into \hat{X}_i."""
-    try:
-        # is it a symbol?
-        if not v.is_symbol():
-            # no, it's a more complex expression
-            raise ValueError( str(v) + ' is not a symbol' )
-    except AttributeError:
-        # it's a string
-        v = SR.symbol(v)
-    import re
-    name = str(v)
-    mn = re.match( '^([^^_]*)(.*?)$', name )
-    if mn: name = xform_str( mn.group(1), mn.group(2) )
-    #name = re.sub( '^([^_]*)(.*?)$', r'\g<1>'+flair+'\g<2>', str(v) )
-    latex_name = latex(v)
-    #latex_name = re.sub( r'^([^_]*)(.*?)$', r'\\'+flair+'{\g<1>}\g<2>', latex(v) )
-    ml = re.match( r'^([^^_]*)(.*?)$', latex_name )
-    latex_name = xform_latex( ml.group(1), ml.group(2) )
-    return SR.symbol( name, latex_name=latex_name )
-
-def add_flair(v, flair):
-    def xform_str( base, subs ): return base + flair + subs
-    def xform_latex( base, subs ): return r'\\' + flair + '{' + base + '}' + subs
-    return xform_symbol(v, xform_str, xform_latex)
-
-def hat(v):
-    return add_flair(v, 'hat')
-
-def dot(v):
-    return add_flair(v, 'dot')
 
 class Trajectory(SageObject):
     """A trajectory of a system of ordinary differential equations.
@@ -136,9 +105,9 @@ class Trajectory(SageObject):
         yexpr = self._system._bindings(yexpr)
         for p in self._timeseries:
             try:
-		print p,':',
+		#print p,':',
                 tup = (N(p(xexpr)), N(p(yexpr)))
-		print tup
+		#print tup
                 points += [ tup ]
             except TypeError: pass
         return points
@@ -253,7 +222,7 @@ class Bindings(dict):
         return '{%s%s}' % (self.inner_repr(), frepr)
     def inner_repr(self):
         return ', '.join( '%s %s %s'%(k, '->', v) for k,v in self.items() ) 
-    def _latex_(self):
+    def latex_text(self):
         return '\\begin{align*}\n%s\n\\end{align*}' % self.latex_inner()
     def latex_inner(self):
         try:
@@ -295,7 +264,7 @@ class Bindings(dict):
     # this is problematic
     # in fact, unacceptable. fixed.
     def bind_in_place(self, *args, **named_args):
-        print 'merge bindings:', self, ',', list(*args), ', ', dict(**named_args)
+        #print 'merge bindings:', self, ',', list(*args), ', ', dict(**named_args)
         other = Bindings(*args, **named_args)
         #for k, v in self.items():
         #    self[k] = other.substitute(v)
@@ -329,7 +298,10 @@ class Bindings(dict):
 # even when the limit can be easily taken.  This re-evaluates them.
 limop = limit( SR('f(x)'), x=0 ).operator()
 def simplify_limits( expr ):
-    return expr.substitute_function( limop, maxima_calculus.sr_limit )
+    print 'before simplify_limits:', expr
+    expr = expr.substitute_function( limop, maxima_calculus.sr_limit )
+    print 'after simplify_limits:', expr
+    return expr
 
 from sage.symbolic.function_factory import function
 class FunctionBindings(Bindings):
@@ -354,7 +326,10 @@ class FunctionBindings(Bindings):
                         # if it's a dict { <fn or name>: <fn or expr> }, including
                         # the kind you would use with substitute_function(),
                         # transform it to { (<name>,<args>):<expr> }
-                        self.update( { (str(k),SR(v).arguments()):SR(v) } )
+			try:
+			    self.update( { (str(k),v.arguments()):SR(v) } )
+			except AttributeError:
+                            self.update( { (str(k),SR(v).arguments()):SR(v) } )
 		    except TypeError:
 		        # this comes up if it's a Piecewise object
 		        # not sure what else
@@ -419,29 +394,6 @@ class indexer(SageObject):
                 return self._f(i)
             except TypeError:
                 return symbolic_expression("%s_%s" % (self._f,i))
-
-def scriptedsymbol( base, superscripts=(), subscripts=() ):
-    try:
-        base.expand() # see if it's an expression
-    except AttributeError: # if not
-        base = SR.symbol( base ) # it is now
-    name, latex_name = str(base), '{%s}'%latex(base)
-    if len(superscripts) > 0:
-        name += '^' + '^'.join(str(s) for s in superscripts)
-        if len(superscripts) > 1:
-            latex_name += '^{%s}' % ''.join('{%s}'%latex(s) for s in superscripts)
-        else:
-            latex_name += '^{%s}' % latex(superscripts[0])
-    if len(subscripts) > 0:
-        name += '_' + '_'.join(str(s) for s in subscripts)
-        if len(subscripts) > 1:
-            latex_name += '_{%s}' % ''.join('{%s}'%latex(s) for s in subscripts)
-        else:
-            latex_name += '_{%s}' % latex(subscripts[0])
-    return SR.symbol( name, latex_name=latex_name )
-
-def subscriptedsymbol( base, *subscripts ):
-    return scriptedsymbol( base, subscripts=subscripts )
 
 # this class was nested inside indexer_2d, but it broke pickling
 class indexer_2d_inner(indexer):
@@ -584,14 +536,14 @@ class ODESystem(SageObject):
 	    ## or if it's a dict, make a list
 	    try: initial_conditions = [ initial_conditions[x] for x in self._vars ]
 	    except TypeError: pass
-        print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
-          [self._flow[v] for v in self._vars],
-          self._vars,
-          [start_time] + initial_conditions,
-          self._time_variable,
-          end_time,
-          step )
-	print "initial flow:", [ self._flow[x].subs( **( { str(k):v for k,v in zip([self._time_variable] + self._vars, [start_time] + initial_conditions ) } ) ) for x in self._vars ]
+        #print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
+        #  [self._flow[v] for v in self._vars],
+        #  self._vars,
+        #  [start_time] + initial_conditions,
+        #  self._time_variable,
+        #  end_time,
+        #  step )
+	#print "initial flow:", [ self._flow[x].subs( **( { str(k):v for k,v in zip([self._time_variable] + self._vars, [start_time] + initial_conditions ) } ) ) for x in self._vars ]
         soln = desolve_system_rk4(
           [self._flow[v] for v in self._vars],
           self._vars, [start_time] + initial_conditions,
@@ -996,8 +948,8 @@ class PopulationDynamicsSystem(ODESystem):
             time_variable=SR.var('t'),
             bindings=Bindings()):
         """for the purposes of AdaptiveDynamicsModel, we need our population
-        dynamics models to be fairly general, and able to produce a specific
-        flow for a varying number of "population indices".
+        dynamics models to be fairly general, and able to produce specific
+        flows for a varying number of "population indices".
 
         population_indices is a list of indices, for instance [1,2,3].
         population_indexer makes state variables from those indices, so, for

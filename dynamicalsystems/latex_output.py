@@ -78,7 +78,7 @@ class latex_output_base(SageObject):
         '''For convenience: write that one thing is equal to another (or more).
         This is because write_block( a == b ) often just writes "false"...'''
         return self.write_environment( 'align*',
-	    self.latex(args[0]) + ' &= ' + '\\\\\n    &= '.join( latex_math(a) for a in args[1:] ) );
+	    latex_math(args[0]) + ' &= ' + '\\\\\n    &= '.join( latex_math(a) for a in args[1:] ) );
     def close(self):
         self._output.close()
         return self;
@@ -185,6 +185,64 @@ class wrap_latex( SageObject ):
     def latex_text(self):
 	if self._mode == 'math': return '$'+self._str+'$'
 	else: return self._str
+
+def xform_symbol(v, xform_str, xform_latex):
+    """little utility function to do things like add a hat or similar thing
+    to a Sage variable, e.g. make X_i into \hat{X}_i."""
+    try:
+        # is it a symbol?
+        if not v.is_symbol():
+            # no, it's a more complex expression
+            raise ValueError( str(v) + ' is not a symbol' )
+    except AttributeError:
+        # it's a string
+        v = SR.symbol(v)
+    import re
+    name = str(v)
+    mn = re.match( '^([^^_]*)(.*?)$', name )
+    if mn: name = xform_str( mn.group(1), mn.group(2) )
+    #name = re.sub( '^([^_]*)(.*?)$', r'\g<1>'+flair+'\g<2>', str(v) )
+    latex_name = latex(v)
+    #latex_name = re.sub( r'^([^_]*)(.*?)$', r'\\'+flair+'{\g<1>}\g<2>', latex(v) )
+    ml = re.match( r'^([^^_]*)(.*?)$', latex_name )
+    latex_name = xform_latex( ml.group(1), ml.group(2) )
+    return SR.symbol( name, latex_name=latex_name )
+
+def add_flair(v, flair):
+    def xform_str( base, subs ): return base + flair + subs
+    def xform_latex( base, subs ): return '\\' + flair + '{' + base + '}' + subs
+    return xform_symbol(v, xform_str, xform_latex)
+
+def hat(v):
+    return add_flair(v, 'hat')
+
+def dot(v):
+    return add_flair(v, 'dot')
+
+def scriptedsymbol( base, superscripts=(), subscripts=() ):
+    try:
+        base.expand() # see if it's an expression
+    except AttributeError: # if not
+        base = SR.symbol( base ) # it is now
+    name, latex_name = str(base), '{%s}'%latex(base)
+    import sys
+    #print base, 'sub', subscripts, 'super', superscripts; sys.stdout.flush()
+    if len(superscripts) > 0:
+        name += '^' + '^'.join(str(s) for s in superscripts)
+        if len(superscripts) > 1:
+            latex_name += '^{%s}' % ''.join('{%s}'%latex(s) for s in superscripts)
+        else:
+            latex_name += '^{%s}' % latex(superscripts[0])
+    if len(subscripts) > 0:
+        name += '_' + '_'.join(str(s) for s in subscripts)
+        if len(subscripts) > 1:
+            latex_name += '_{%s}' % ''.join('{%s}'%latex(s) for s in subscripts)
+        else:
+            latex_name += '_{%s}' % latex(subscripts[0])
+    return SR.symbol( name, latex_name=latex_name )
+
+def subscriptedsymbol( base, *subscripts ):
+    return scriptedsymbol( base, subscripts=subscripts )
 
 # TODO: integrate with stuff above
 def write_tex_inline( vname, lname=None, fname=None, bindings=None ):
