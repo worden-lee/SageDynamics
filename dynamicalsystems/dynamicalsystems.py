@@ -225,11 +225,12 @@ class Bindings(dict):
     def latex_text(self):
         return '\\begin{align*}\n%s\n\\end{align*}' % self.latex_inner()
     def latex_inner(self):
+	ltx = ' \\\\\n'.join( '  %s &\\to %s' % (latex(key), latex(val)) for key, val in self.items() )
         try:
             flx = self._function_bindings.latex_inner()
-        except:
-            flx = ''
-        return '%s%s' % ( ' \\\\\n'.join( '  %s &\\to %s' % (latex(key), latex(val)) for key, val in self.items() ), flx )
+	    if flx != '': ltx += '\\\\\n' + flx
+        except: pass
+        return ltx
     def substitute(self, expr):
         """Apply the bindings to an expression"""
 	# if it has a bind method, use that
@@ -298,9 +299,9 @@ class Bindings(dict):
 # even when the limit can be easily taken.  This re-evaluates them.
 limop = limit( SR('f(x)'), x=0 ).operator()
 def simplify_limits( expr ):
-    print 'before simplify_limits:', expr
+    #print 'before simplify_limits:', expr
     expr = expr.substitute_function( limop, maxima_calculus.sr_limit )
-    print 'after simplify_limits:', expr
+    #print 'after simplify_limits:', expr
     return expr
 
 from sage.symbolic.function_factory import function
@@ -504,13 +505,6 @@ class ODESystem(SageObject):
     def time_variable(self):
         """Provide the independent variable, for instance for plotting"""
         return self._time_variable
-    def bind_in_place(self, *bindings, **args):
-        """Apply bindings to my formulas without copying to a new object.
-
-        See bind(), below."""
-        binding = Bindings( *bindings, **args )
-        self._flow = { k:binding(v) for k,v in self._flow.items() }
-        self._bindings = self._bindings + binding
     def bind(self, *bindings, **args):
         """If you create a system with various symbolic parameters, like
         dy/dt = ay^2 + by + c, or something, you can't numerically
@@ -524,6 +518,13 @@ class ODESystem(SageObject):
         bound = deepcopy( self )
         bound.bind_in_place( *bindings, **args )
         return bound
+    def bind_in_place(self, *bindings, **args):
+        """Apply bindings to my formulas without copying to a new object.
+
+        See bind(), above."""
+        binding = Bindings( *bindings, **args )
+        self._flow = { k:binding(v) for k,v in self._flow.items() }
+        self._bindings = self._bindings + binding
     def solve(self, initial_conditions, end_time=20, start_time=0, step=0.1):
 	return self.desolve( initial_conditions, start_time=start_time, end_time=end_time, step=step)
     def desolve(self, initial_conditions, end_time=20, start_time=0, step=0.1):

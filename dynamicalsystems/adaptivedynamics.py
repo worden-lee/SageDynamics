@@ -54,6 +54,7 @@ class AdaptiveDynamicsModel(ODESystem):
           stable nontrivial equilibrium is used.  If that's not unique,
           an exception is raised.  Note that trying to find stable
           equilibria can overwhelm the computer if parameters are unbound.
+	  One way to avoid that is by using model.symbolic_equilibria().
         early_bindings: Whereas things that are simple variables in
           the population dynamics, say r_i, an intrinsic growth rate, now
           need to be treated as functions of phenotypic quantities, say
@@ -162,6 +163,14 @@ class AdaptiveDynamicsModel(ODESystem):
             dI_du = [ ( u[resident_index], limits( dI_dui, limdict ) )
                 for u, dI_dui in zip(self._phenotype_indexers, dI_du) ]
 	    if self._workaround_limits:
+		## first, if any limit operators left in there,
+		## replace the limit by a direct substitution
+		dI_du = [ ( u, d.substitute_function(
+		    sage.calculus.calculus._limit, 
+		    lambda e, f, t: ( e.subs({f:t}) if f in limdict else e )
+		) ) for u,d in dI_du ]
+		## second, if any of the bound variables left without the
+		## limit operator, substitute
 		dI_du = [ (u,d.subs(limdict)) for u,d in dI_du ]
             #print 'as u_i->u_*:\n', join( (" dI/d%s: %s" % (u_j, dI_duj)
             #    for u_j, X_j, dI_duj in dI_du), '\n')
@@ -227,6 +236,11 @@ class AdaptiveDynamicsModel(ODESystem):
 		else: # this needs some thought
 		    pass #for ix in self._
         return trajectory
+    def bind_in_place(self, *bindings, **args):
+	b = Bindings( *bindings, **args )
+        super(AdaptiveDynamicsModel, self).bind_in_place( b )
+	self._popdyn_model.bind_in_place( b )
+	self._S = { k:b(v) for k,v in self._S.iteritems() }
 
 class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel ):
     """Where AdaptiveDynamicsModel derives a closed expression for the
