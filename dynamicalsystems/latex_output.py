@@ -86,10 +86,11 @@ class latex_output_base(SageObject):
 def environment( envname, *stuff, **keywords ):
     outer_mode=keywords.pop( 'outer_mode', 'text')
     inner_mode=keywords.pop( 'inner_mode', 'math' )
+    between_text = keywords.pop( 'between_text', '\\\\\n  ' )
     l_fn = (latex_math if inner_mode == 'math' else latex_text)
     return wrap_latex( 
         '\n\\begin{' + envname + '}\n  ' +
-        '\\\\\n  '.join( l_fn(a) for a in stuff ) +
+        between_text.join( l_fn(a) for a in stuff ) +
         '\n\\end{' + envname + '}\n',
         outer_mode
     )
@@ -120,25 +121,53 @@ def dgroup_eqns( *stuff ):
 	        *[ environment( 'dmath*',
 		    ' = ' + latex_math( s ),
 		    outer_mode='math'
-	        ) for s in stuff[2:] ]
+	        ) for s in stuff[2:] ],
+		between_text = ''
 	    )
         ) +
 	'\\fi\n',
 	'text'
     )
 
-def dgroup( *stuff ):
-    ## latex for a list of objects, aligned using dgroup
-    return wrap_latex(
-	'\\iflatexml\n' +
-	latex_text( environment( 'align*', stuff ) ) +
-	'\\else\n' +
-	latex_text( environment( 'dgroup*',
-	    *[ environment( 'dmath*', s, outer_mode='math') for s in stuff[2:] ]
-	) ) +
-	'\\fi\n',
-	'text'
-    )
+def dgroup( things, op=None ):
+    ## latex for a list of relational expressions, aligned using dgroup
+    ## general form for things is a nested list:
+    ##  [ [ expr, (op, expr), (op, expr), ... ],
+    ##    [ expr, ... ] ]
+    ## allows full choice of ops.  simpler is
+    ##  [ [ expr, expr, ... ], [ expr, expr, ... ], ... ], op='='
+    ## (can we allow op to be a sage operator rather than a string?
+    #  looks nontrivial with how latex is done inside ginac)
+    if op is None:
+        return wrap_latex(
+	    '\\iflatexml\n' +
+	    latex_text( environment( 'align*', stuff ) ) +
+	    '\\else\n' +
+	    latex_text( environment( 'dgroup*',
+	        *[ environment( 'dmath*', s, outer_mode='math') for s in stuff[2:] ]
+	    ) ) +
+	    '\\fi\n',
+	    'text'
+        )
+    else:
+	return wrap_latex(
+	    '\\iflatexml\n' +
+	    latex_text( environment( 'align*',
+		*( latex_math( l[0] ) + ' ' + op + ' ' +
+		''.join(
+			('\\\\\n  &'+op+ ' ').join( latex_math( e ) for e in l[1:] ) )
+			for l in things )
+		) ) +
+	    '\\else' +
+	    latex_text( environment( 'dgroup*',
+		*( environment( 'dmath*',
+		    latex_math(l[0]) + ' ' + op + ' ' +
+		    ('\\\\\n  '+op+' ').join( latex_math(e) for e in l[1:] ),
+		    outer_mode='math' ) for l in things ),
+		between_text='' ) ) +
+	    '\\fi',
+	    'text'
+	)
 
 class latex_output_file(latex_output_base):
     '''latex_output_file: class to write a latex file.
