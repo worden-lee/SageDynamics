@@ -547,7 +547,7 @@ class ODESystem(SageObject):
 	#print "initial flow:", [ self._flow[x].subs( **( { str(k):v for k,v in zip([self._time_variable] + self._vars, [start_time] + initial_conditions ) } ) ) for x in self._vars ]
         soln = desolve_system_rk4(
           [self._flow[v] for v in self._vars],
-          self._vars, [start_time] + initial_conditions,
+          self._vars, [ SR(x0) for x0 in [start_time] + initial_conditions ],
           ivar=self._time_variable,
           end_points=end_time, step=step )
         #return Trajectory(self, soln)
