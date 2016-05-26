@@ -165,7 +165,7 @@ def dgroup( things, op=None ):
 		    ('\\\\\n  '+op+' ').join( latex_math(e) for e in l[1:] ),
 		    outer_mode='math' ) for l in things ),
 		between_text='' ) ) +
-	    '\\fi',
+	    '\\fi\n',
 	    'text'
 	)
 

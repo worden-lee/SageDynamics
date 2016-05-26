@@ -217,8 +217,8 @@ class AdaptiveDynamicsModel(ODESystem):
         trajectory = super(AdaptiveDynamicsModel,self).solve(initial_conditions, **opts)
         # check that populations stay positive
         xs = [ self._bindings(x) for x in self._popdyn_model.equilibrium_vars() ]
-        print 'timeseries:', trajectory._timeseries
-        print 'X at first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
+        #print 'timeseries:', trajectory._timeseries
+        #print 'X at first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
         for i in range(len(trajectory._timeseries)):
 	    exts = [ x for x in xs if N(trajectory._timeseries[i](x)) <= 0 ]
             if len( exts ) > 0:
@@ -240,7 +240,9 @@ class AdaptiveDynamicsModel(ODESystem):
 	b = Bindings( *bindings, **args )
         super(AdaptiveDynamicsModel, self).bind_in_place( b )
 	self._popdyn_model.bind_in_place( b )
-	self._S = { k:b(v) for k,v in self._S.iteritems() }
+	for k,v in self._S.items():
+		self._S[k] = self._bindings( v )
+	return self
 
 class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel ):
     """Where AdaptiveDynamicsModel derives a closed expression for the

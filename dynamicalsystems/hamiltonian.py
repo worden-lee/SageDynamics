@@ -20,6 +20,7 @@ class HamiltonianODE(dynamicalsystems.ODESystem):
 	b = dynamicalsystems.Bindings( *largs, **dargs )
 	super(HamiltonianODE,self).bind_in_place( b )
 	self._H = b(self._H)
+	return self
     def extend_with_s(self, s=SR.symbol('s')):
 	self._s_var = s
 	self._vars += [s]
