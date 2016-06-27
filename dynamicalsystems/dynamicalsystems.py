@@ -215,8 +215,14 @@ class indexer_2d_inner(indexer):
 class indexer_2d(indexer):
     """Instead of mapping i |-> x_i, this does a 2-step mapping
     i |-> j |-> x_i_j.  That is, indexer_2d('x')[i][j] produces x_i_j."""
+    def __inner_class(self):
+	return indexer_2d_inner
+    def __init__(self, f, inner_class=None):
+	if inner_class is None: self._inner_class = self.__inner_class()
+	else: self._inner_class = inner_class
+	super(indexer_2d,self).__init__(f)
     def __getitem__(self, i):
-        return indexer_2d_inner( self._f, i )
+        return self._inner_class( self._f, i )
 
 class indexer_2d_reverse_inner(indexer):
     def __init__(self, f, j):
@@ -230,8 +236,10 @@ class indexer_2d_reverse(indexer_2d):
     """Just like indexer_2d but maps j |-> i |-> x_i_j rather than to
     x_j_i as the other one would do.  Useful when you want a way to
     generate all x_i_j for a given j, as I do."""
-    def __getitem__(self, j):
-        return indexer_2d_reverse_inner( self._f, j )
+    #def __getitem__(self, j):
+    #    return indexer_2d_reverse_inner( self._f, j )
+    def inner_class(self):
+	return indexer_2d_reverse_inner
 
 class const_indexer(indexer):
     """always return the same value"""
@@ -460,8 +468,14 @@ class ODESystem(SageObject):
             equilibria = solve( equil_eqns, *self.equilibrium_vars(), solution_dict=True )
         #equilibria = [ { k:(v) for k,v in soln.items() } for soln in solns ]
         return equilibria
+    def nontrivial_equilibria(self):
+        equilibria = self.equilibria()
+	print equilibria
+        try: return [ eq for eq in equilibria if any( eq[hat(x)] != 0 for x in self._vars ) ]
+	except KeyError: return []
     def interior_equilibria(self):
-        return [ eq for eq in self.equilibria() if all( eq[hat(x)] != 0 for x in self._vars ) ]
+        try: return [ eq for eq in self.equilibria() if all( eq[hat(x)] != 0 for x in self._vars ) ]
+	except KeyError: return []
     def jacobian(self, at=None):
         j = dict( ( ki, dict( ( kj, diff( self._flow[ki], kj ) ) for kj in self._vars ) ) for ki in self._vars )
         try:

@@ -141,10 +141,10 @@ def dgroup( things, op=None ):
     if op is None:
         return wrap_latex(
 	    '\\iflatexml\n' +
-	    latex_text( environment( 'align*', stuff ) ) +
+	    latex_text( environment( 'align*', things ) ) +
 	    '\\else\n' +
 	    latex_text( environment( 'dgroup*',
-	        *[ environment( 'dmath*', s, outer_mode='math') for s in stuff[2:] ]
+	        *[ environment( 'dmath*', s, outer_mode='math') for s in things[2:] ]
 	    ) ) +
 	    '\\fi\n',
 	    'text'
@@ -329,4 +329,43 @@ class column_vector(SageObject): # v.column() is missing?
     def transpose(self):
         return self.vector
 
+def visual_D( indx, f, f_args ):
+    #print 'D', indx, f, f_args
+    if indx == [0] and len(f_args) == 1:
+        return SR.symbol( '%s_prime_%s' % (
+		str(f),
+		str( f_args[0] )
+	    ),
+	    latex_name = '{%s}\'(%s)' % (
+		latex_math( f ),
+		latex_math( f_args[0] )
+	    )
+	)
+    else:
+	return SR.symbol( 'partial_%s_%s_%s' % (
+		''.join( str(i) for i in indx ),
+		str(f),
+		'_'.join( str(i) for i in f_args )
+	    ),
+	    latex_name='\partial_{%s}%s(%s)' % (
+		''.join( latex_math(i) for i in indx ),
+		latex_math(f),
+		', '.join( latex_math(e) for e in f_args )
+	    )
+	)
+
+# useful parent class: expression converter that doesn't
+# do anything
+from sage.symbolic.expression_conversions import SubstituteFunction
+class IdentityConverter(SubstituteFunction):
+    def __init__(self):
+        pass
+    def composition(self, ex, operator):
+        # override the parent class's function replacing step
+        return operator(*map(self, ex.operands()))
+
+class latex_partials_representation(IdentityConverter):
+    def derivative( self, ex, operator ):
+	#print ex, ' - operator is ', operator
+	return visual_D( operator.parameter_set(), operator.function(), ex.operands() )
 
