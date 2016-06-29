@@ -83,29 +83,30 @@ class Bindings(dict):
         other.update( self )
         other._function_bindings = deepcopy( self._function_bindings, _dict )
         return other
-    def bind_in_place(self, *args, **named_args):
-        #print 'bind_in_place:', self, ',', args, ', ', named_args
+    ## semantics of combining bindings.
+    ## + should be a direct sum or something. I don't know whether it is - I
+    ## think currently both + and bind are an odd relative of composition.
+    ## merge is the same as +
+    ## bind should be different.
+    ## B1.bind( B2 ) is the same as B2( B1 ) and it means
+    ## B1 but with B2 applied to its predicates (rhs's).
+    def merge_in_place(self, *args, **named_args):
         other = Bindings(*args, **named_args)
+	## apply other to all rhs of self, and import other's bindings
+	## into self (except for things self already has bindings for)
         #for k, v in self.items():
         #    self[k] = other.substitute(v)
         try: # is it a FunctionBindings?
             other.merge_into_function_bindings(self)
         except AttributeError: # if not
-            self.update(other)
+            #self.update(other)
+	    for k,j in other.iteritems():
+		if k not in self:
+		    self[k] = j
             other._function_bindings.merge_into_function_bindings(self)
         self.apply_to_self()
 	#print 'result of bind_in_place: ', self
         return self
-    def merge(self, *args, **xargs):
-        """Combine with another set of bindings.  We assume that self is the
-        bindings that have already been applied, and the other bindings are
-        being applied afterward.  Thus self's bindings take priority, if there's
-        any potential conflict."""
-	return deepcopy(self).bind_in_place( *args, **xargs )
-    def bind(self, *args, **xargs):
-        return self.merge( *args, **xargs )
-    def __add__(self, other):
-        return self.merge( other )
     def apply_to_self(self):
         """after merging bindings together, we have to apply the bindings to
         each other so that all substitutions get done in a single pass"""
@@ -117,6 +118,32 @@ class Bindings(dict):
 		    self[k] = self.substitute(v)
 		self._function_bindings.apply_bindings(self)
 	return self
+    def bind_in_place(self, *args, **named_args):
+	## @@ todo: this should be different from the merge or + operation?
+        #print 'bind_in_place:', self, ',', args, ', ', named_args
+        other = Bindings(*args, **named_args)
+	## apply other to all rhs of self.
+	## in certain special cases (to work with load_session() issue)
+	## apply certain SR-variable replacements to lhs as well
+	for k,j in self.iteritems():
+	    self[k] = other(j)
+	for k,j in other.iteritems():
+	    if k.is_symbol() and j.is_symbol() and str(k) == str(j):
+		if j in self:
+		    self[k] = self[j]
+		elif k in self:
+		    self[j] = self[k]
+	return self
+    def merge(self, *args, **xargs):
+        """Combine with another set of bindings.  We assume that self is the
+        bindings that have already been applied, and the other bindings are
+        being applied afterward.  Thus self's bindings take priority, if there's
+        any potential conflict."""
+	return deepcopy(self).merge_in_place( *args, **xargs )
+    def bind(self, *args, **xargs):
+        return deepcopy(self).bind_in_place( *args, **xargs )
+    def __add__(self, other):
+        return self.merge( other )
 
 # see http://trac.sagemath.org/ticket/17553
 # limit() and substitute_function() don't play well together.
