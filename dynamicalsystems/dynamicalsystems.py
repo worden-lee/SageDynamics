@@ -97,17 +97,21 @@ class Trajectory(SageObject):
 	#if self._system is not other._system:
 	#    raise ValueError, "Can't concatenate incompatible trajectories"
 	return Trajectory( self._system, self._timeseries + other._timeseries )
-    def make_points(self, xexpr, yexpr):
+    def make_points(self, xexpr, yexpr, zexpr=None):
         # for branching stuff
         # list the evaluations of the expressions at the points,
         # only at the ones where they both evaluate to numbers
         points = []
         xexpr = self._system._bindings(xexpr)
         yexpr = self._system._bindings(yexpr)
+	zexpr = self._system._bindings(zexpr)
         for p in self._timeseries:
             try:
 		#print p,':',
-                tup = (N(p(xexpr)), N(p(yexpr)))
+		if zexpr is not None:
+		    tup = (N(p(xexpr)), N(p(yexpr)), N(p(zexpr)))
+		else:
+		    tup = (N(p(xexpr)), N(p(yexpr)))
 		#print tup
                 points += [ tup ]
             except TypeError: pass
@@ -120,15 +124,17 @@ class Trajectory(SageObject):
     def values(self, expr):
 	bex = self._system._bindings(expr)
 	return [ self.bind_value( t, bex ) for t in self._timeseries ]
-    def plot(self, xexpr, yexpr, filename='', xlabel=-1, ylabel=-1, **args):
-        """Make a 2-d plot of some pair of symbolic expressions that can
+    def plot(self, xexpr, yexpr, zexpr=None, filename='', xlabel=-1, ylabel=-1, **args):
+        """Make a 2-d or 3-d plot of some pair of symbolic expressions that can
         be resolved to values of the state variables, time variable and
         parameters, along this trajectory.
 
         xexpr: expression to plot on the x axis.
         yexpr: expression to plot on the y axis.
+	zexpr: expression, if any, to plot on the z axis.
         filename: filename to receive the plot.
         xlabel, ylabel: axis labels, if other than the text of the expressions.
+	(labels not implemented in 3-d.)
         args: arguments to pass through to list_plot()
         """
         #print 'plot %s vs. %s' % (str(xexpr), str(yexpr))
@@ -151,20 +157,28 @@ class Trajectory(SageObject):
             yexpr = self._system._bindings(yexpr)
             #print 'after substitution: %s vs. %s' % (str(xexpr), str(yexpr))
             #print 'timeseries:', self._timeseries
-            P = list_plot(
-              self.make_points( xexpr, yexpr ),
-              plotjoined = True,
-              **args
-            )
-        if (xlabel == -1): xlabel = xexpr
-        if (ylabel == -1): ylabel = yexpr
-	try: basestring
-	except NameError: basestring=str
-	if not isinstance( xlabel, basestring ):
-            xlabel = '$%s$' % latex(xlabel)
-	if not isinstance( ylabel, basestring ):
-            ylabel = '$%s$' % latex(ylabel)
-        P.axes_labels( [xlabel,ylabel] )
+	    if zexpr is not None:
+		P = list_plot3d(
+		  self.make_points( xexpr, yexpr, zexpr ),
+		  point_list = true,
+		  **args
+		)
+	    else:
+                P = list_plot(
+                  self.make_points( xexpr, yexpr ),
+                  plotjoined = True,
+                  **args
+                )
+	if zexpr is None:
+            if (xlabel == -1): xlabel = xexpr
+            if (ylabel == -1): ylabel = yexpr
+	    try: basestring
+	    except NameError: basestring=str
+	    if not isinstance( xlabel, basestring ):
+                xlabel = '$%s$' % latex(xlabel)
+	    if not isinstance( ylabel, basestring ):
+                ylabel = '$%s$' % latex(ylabel)
+            P.axes_labels( [xlabel,ylabel] )
         if (filename != ''):
             P.save(filename)
         return P
