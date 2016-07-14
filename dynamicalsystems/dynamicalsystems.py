@@ -141,26 +141,34 @@ class Trajectory(SageObject):
         #print 'bindings are ', self._system._bindings
         xexpr = self._system._bindings(xexpr)
         try:
-            if isinstance( yexpr, str ): raise TypeError
+	    # catch the "y is a string" case, because the test below won't
+            if isinstance( yexpr, str ): raise TypeError('yexpr is a string, "{}"'.format(yexpr))
             #if isinstance( yexpr, basestr ): raise TypeError
             # TODO: this is not doing colors right
             P = None
+	    # this or the next line raise TypeError if y is not a list or tuple
 	    colors = rainbow( len( yexpr ) )
             for y in yexpr:
-                p = self.plot( xexpr, y, color=colors.pop(), legend_label='$%s$'%latex(y), **args )
+		#print 'iterate, plot',y
+		zargs = copy(args)
+		if 'color' not in zargs: zargs['color'] = colors.pop() 
+		if 'legend_label' not in zargs: zargs['legend_label'] = '$%s$'%latex(y)
+                py = self.plot( xexpr, y, **zargs )
                 if P is None:
-                    P = p
+                    P = py
                 else:
-                    P += p
+                    P += py
 	    ylabel = ''
-        except TypeError:
+        except TypeError, te:
+	    #print 'TypeError:', te
             yexpr = self._system._bindings(yexpr)
             #print 'after substitution: %s vs. %s' % (str(xexpr), str(yexpr))
+	    #sys.stdout.flush()
             #print 'timeseries:', self._timeseries
 	    if zexpr is not None:
-		P = list_plot3d(
+		import sage.plot.plot3d.shapes2
+		P = sage.plot.plot3d.shapes2.Line(
 		  self.make_points( xexpr, yexpr, zexpr ),
-		  point_list = true,
 		  **args
 		)
 	    else:
@@ -351,7 +359,9 @@ class ODESystem(SageObject):
         See bind(), above.
 	"""
         b = Bindings( *bindings, **args )
-        self._bindings.bind_in_place( b )
+	#print '===before===\n', self._bindings
+        self._bindings.merge_in_place( b )
+	#print '===after===\n', self._bindings, '\n========\n'
         self._flow = { k:self._bindings(v) for k,v in self._flow.items() }
 	return self
     def solve(self, initial_conditions, end_time=20, start_time=0, step=0.1):

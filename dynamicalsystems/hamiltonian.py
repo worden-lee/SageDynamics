@@ -21,11 +21,13 @@ class HamiltonianODE(dynamicalsystems.ODESystem):
 	super(HamiltonianODE,self).bind_in_place( b )
 	self._H = b(self._H)
 	return self
-    def extend_with_s(self, s=SR.symbol('s')):
-	self._s_var = s
-	self._vars += [s]
-	self._flow[s] = self.lagrangian()
+    def extend_with_action_in_place(self, u=SR.symbol('u')):
+	self._u_var = u
+	self._vars += [u]
+	self._flow[u] = self.lagrangian()
 	return self
+    def extend_with_action(self, u=SR.symbol('u')):
+	return deepcopy(self).extend_with_action_in_place()
     def lagrangian(self):
 	## note this is the lagrangian in terms of x and p - it should
 	## really be in terms of x and \dot{x}, which is harder
@@ -56,7 +58,7 @@ class HamiltonianODE(dynamicalsystems.ODESystem):
 	constraints = opts.get( 'constraints', [] )
 	## special solving procedure, taking into account the exponential
 	## form in p.
-	## note this may be applicable only to box hamiltonians.  Consider
+	## note this may be applicable only to box-model Hamiltonians.  Consider
 	## making a specialization of this class for that.
 	add_hats = self.add_hats()
 	ui = dynamicalsystems.indexer('u')

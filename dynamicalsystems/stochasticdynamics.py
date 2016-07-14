@@ -6,11 +6,10 @@ import dynamicalsystems
 
 class FiniteDimensionalStochasticDynamics(SageObject):
     """Generic class for discrete time stochastic dynamics simulations.
-    Will mainly be used for finite dimensional state space.  If infinite
+    Will primarily be used for finite dimensional state space.  If infinite
     dimensional turns out to have different requirements, class
     hierarchy might change.
-    TODO: introduce DiscreteTimeDynamics parent or something.
-    TODO: go beyond having this as a placeholder."""
+    TODO: introduce DiscreteTimeDynamics parent or something."""
     def __init__( self, vars, time_variable=SR.symbol('t'), bindings=dynamicalsystems.Bindings() ):
 	self._vars = vars
 	self._time_variable = time_variable
