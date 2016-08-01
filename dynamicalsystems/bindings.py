@@ -68,11 +68,10 @@ class Bindings(dict):
         try:
             return expr.apply_map( lambda x : self.substitute( x ) )
         except AttributeError: pass
-        # in case expr is a plain string
 	try:
-	    expr = symbolic_expression(expr)
-	except TypeError:
-	    # if it's something totally else, like None, leave as is
+            # in case expr is a plain string
+            expr = symbolic_expression(expr)
+	except TypeError: # and if it can't become an SR expression, just pass it
 	    return expr
         expr = expr.substitute_expression(self)
         #print ' => ', expr
