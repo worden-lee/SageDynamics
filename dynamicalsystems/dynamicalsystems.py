@@ -359,9 +359,7 @@ class ODESystem(SageObject):
         See bind(), above.
 	"""
         b = Bindings( *bindings, **args )
-	#print '===before===\n', self._bindings
         self._bindings.merge_in_place( b )
-	#print '===after===\n', self._bindings, '\n========\n'
         self._flow = { k:self._bindings(v) for k,v in self._flow.items() }
 	return self
     def solve(self, initial_conditions, end_time=20, start_time=0, step=0.1):
