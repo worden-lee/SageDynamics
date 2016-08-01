@@ -276,6 +276,8 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         self._early_bindings = early_bindings
         self._late_bindings = late_bindings
         self._equilibrium_function = equilibrium_function
+	## KILL ME - this init doesn't call AdaptiveDynamicsModel's init
+	self._workaround_limits = False
         self.calculate_adaptive_dynamics()
         print 'ad flow:', self._flow
         print '+ bindings:', early_bindings + late_bindings + popdyn_model._bindings
