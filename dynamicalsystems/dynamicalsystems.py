@@ -1,4 +1,10 @@
 """Dynamical systems classes"""
+## these 2 lines seem to be needed for doctesting
+## http://webcache.googleusercontent.com/search?q=cache:E3ULGhsSTZMJ:ask.sagemath.org/question/7998/trouble-using-import-and-doctest-together/+&cd=6&hl=en&ct=clnk&gl=us
+import sys
+sys.path.append(".")
+##
+
 from sage.all import *
 from string import join
 from sage.misc.latex import _latex_file_
@@ -60,8 +66,8 @@ class Trajectory(SageObject):
                 self.point_to_bindings( point ) for point in timeseries
             ]
             #print 'get', timeseries
-	except IndexError: # timeseries is empty
-	    pass
+        except IndexError: # timeseries is empty
+            pass
         self._timeseries = timeseries
     def __repr__(self):
         return 'Trajectory(' + repr(self._timeseries) + ')'
@@ -93,10 +99,10 @@ class Trajectory(SageObject):
         self._timeseries += [ self.point_to_bindings( state ) ]
         return self
     def __add__(self, other):
-	# you can combine trajectories from different models, at your own risk
-	#if self._system is not other._system:
-	#    raise ValueError, "Can't concatenate incompatible trajectories"
-	return Trajectory( self._system, self._timeseries + other._timeseries )
+        # you can combine trajectories from different models, at your own risk
+        #if self._system is not other._system:
+        #    raise ValueError, "Can't concatenate incompatible trajectories"
+        return Trajectory( self._system, self._timeseries + other._timeseries )
     def make_points(self, xexpr, yexpr, zexpr=None):
         # for branching stuff
         # list the evaluations of the expressions at the points,
@@ -104,26 +110,26 @@ class Trajectory(SageObject):
         points = []
         xexpr = self._system._bindings(xexpr)
         yexpr = self._system._bindings(yexpr)
-	zexpr = self._system._bindings(zexpr)
+        zexpr = self._system._bindings(zexpr)
         for p in self._timeseries:
             try:
-		#print p,':',
-		if zexpr is not None:
-		    tup = (N(p(xexpr)), N(p(yexpr)), N(p(zexpr)))
-		else:
-		    tup = (N(p(xexpr)), N(p(yexpr)))
-		#print tup
+                #print p,':',
+                if zexpr is not None:
+                    tup = (N(p(xexpr)), N(p(yexpr)), N(p(zexpr)))
+                else:
+                    tup = (N(p(xexpr)), N(p(yexpr)))
+                #print tup
                 points += [ tup ]
             except TypeError: pass
         return points
     def bind_value(self, ts, expr):
-	try:
-	    return ts(expr)
-	except ValueError: # for instance, division by zero
-	    return NaN
+        try:
+            return ts(expr)
+        except ValueError: # for instance, division by zero
+            return NaN
     def values(self, expr):
-	bex = self._system._bindings(expr)
-	return [ self.bind_value( t, bex ) for t in self._timeseries ]
+        bex = self._system._bindings(expr)
+        return [ self.bind_value( t, bex ) for t in self._timeseries ]
     def plot(self, xexpr, yexpr, zexpr=None, filename='', xlabel=-1, ylabel=-1, **args):
         """Make a 2-d or 3-d plot of some pair of symbolic expressions that can
         be resolved to values of the state variables, time variable and
@@ -131,60 +137,60 @@ class Trajectory(SageObject):
 
         xexpr: expression to plot on the x axis.
         yexpr: expression to plot on the y axis.
-	zexpr: expression, if any, to plot on the z axis.
+        zexpr: expression, if any, to plot on the z axis.
         filename: filename to receive the plot.
         xlabel, ylabel: axis labels, if other than the text of the expressions.
-	(labels not implemented in 3-d.)
+        (labels not implemented in 3-d.)
         args: arguments to pass through to list_plot()
         """
         #print 'plot %s vs. %s' % (str(xexpr), str(yexpr))
         #print 'bindings are ', self._system._bindings
         xexpr = self._system._bindings(xexpr)
         try:
-	    # catch the "y is a string" case, because the test below won't
+            # catch the "y is a string" case, because the test below won't
             if isinstance( yexpr, str ): raise TypeError('yexpr is a string, "{}"'.format(yexpr))
             #if isinstance( yexpr, basestr ): raise TypeError
             # TODO: this is not doing colors right
             P = None
-	    # this or the next line raise TypeError if y is not a list or tuple
-	    colors = rainbow( len( yexpr ) )
+            # this or the next line raise TypeError if y is not a list or tuple
+            colors = rainbow( len( yexpr ) )
             for y in yexpr:
-		#print 'iterate, plot',y
-		zargs = copy(args)
-		if 'color' not in zargs: zargs['color'] = colors.pop() 
-		if 'legend_label' not in zargs: zargs['legend_label'] = '$%s$'%latex(y)
+                #print 'iterate, plot',y
+                zargs = copy(args)
+                if 'color' not in zargs: zargs['color'] = colors.pop() 
+                if 'legend_label' not in zargs: zargs['legend_label'] = '$%s$'%latex(y)
                 py = self.plot( xexpr, y, **zargs )
                 if P is None:
                     P = py
                 else:
                     P += py
-	    ylabel = ''
+            ylabel = ''
         except TypeError, te:
-	    #print 'TypeError:', te
+            #print 'TypeError:', te
             yexpr = self._system._bindings(yexpr)
             #print 'after substitution: %s vs. %s' % (str(xexpr), str(yexpr))
-	    #sys.stdout.flush()
+            #sys.stdout.flush()
             #print 'timeseries:', self._timeseries
-	    if zexpr is not None:
-		import sage.plot.plot3d.shapes2
-		P = sage.plot.plot3d.shapes2.Line(
-		  self.make_points( xexpr, yexpr, zexpr ),
-		  **args
-		)
-	    else:
+            if zexpr is not None:
+                import sage.plot.plot3d.shapes2
+                P = sage.plot.plot3d.shapes2.Line(
+                  self.make_points( xexpr, yexpr, zexpr ),
+                  **args
+                )
+            else:
                 P = list_plot(
                   self.make_points( xexpr, yexpr ),
                   plotjoined = True,
                   **args
                 )
-	if zexpr is None:
+        if zexpr is None:
             if (xlabel == -1): xlabel = xexpr
             if (ylabel == -1): ylabel = yexpr
-	    try: basestring
-	    except NameError: basestring=str
-	    if not isinstance( xlabel, basestring ):
+            try: basestring
+            except NameError: basestring=str
+            if not isinstance( xlabel, basestring ):
                 xlabel = '$%s$' % latex(xlabel)
-	    if not isinstance( ylabel, basestring ):
+            if not isinstance( ylabel, basestring ):
                 ylabel = '$%s$' % latex(ylabel)
             P.axes_labels( [xlabel,ylabel] )
         if (filename != ''):
@@ -228,31 +234,31 @@ class indexer(SageObject):
 # this class was nested inside indexer_2d, but it broke pickling
 class indexer_2d_inner(indexer):
     def __init__(self, f, i):
-	self._f = f
-	self._i = i
+        self._f = f
+        self._i = i
     def __getitem__(self, j):
-	return SR.symbol( '%s_%s_%s' % (self._f, self._i, j),
-	    latex_name='{%s}_{%s%s}' % (self._f, self._i, j) )
+        return SR.symbol( '%s_%s_%s' % (self._f, self._i, j),
+            latex_name='{%s}_{%s%s}' % (self._f, self._i, j) )
 
 class indexer_2d(indexer):
     """Instead of mapping i |-> x_i, this does a 2-step mapping
     i |-> j |-> x_i_j.  That is, indexer_2d('x')[i][j] produces x_i_j."""
     def __inner_class(self):
-	return indexer_2d_inner
+        return indexer_2d_inner
     def __init__(self, f, inner_class=None):
-	if inner_class is None: self._inner_class = self.__inner_class()
-	else: self._inner_class = inner_class
-	super(indexer_2d,self).__init__(f)
+        if inner_class is None: self._inner_class = self.__inner_class()
+        else: self._inner_class = inner_class
+        super(indexer_2d,self).__init__(f)
     def __getitem__(self, i):
         return self._inner_class( self._f, i )
 
 class indexer_2d_reverse_inner(indexer):
     def __init__(self, f, j):
-	self._f = f
-	self._j = j
+        self._f = f
+        self._j = j
     def __getitem__(self, i):
-	return SR.symbol( '%s_%s_%s' % (self._f, i, self._j ),
-	    latex_name='%s_{%s%s}' % (self._f, i, self._j ) )
+        return SR.symbol( '%s_%s_%s' % (self._f, i, self._j ),
+            latex_name='%s_{%s%s}' % (self._f, i, self._j ) )
 
 class indexer_2d_reverse(indexer_2d):
     """Just like indexer_2d but maps j |-> i |-> x_i_j rather than to
@@ -261,7 +267,7 @@ class indexer_2d_reverse(indexer_2d):
     #def __getitem__(self, j):
     #    return indexer_2d_reverse_inner( self._f, j )
     def inner_class(self):
-	return indexer_2d_reverse_inner
+        return indexer_2d_reverse_inner
 
 class const_indexer(indexer):
     """always return the same value"""
@@ -314,31 +320,31 @@ class ODESystem(SageObject):
         return self.latex_text() # not correct in math mode!
     def latex_text(self):
         return ('\\iflatexml\n' +
-	    '\\begin{align*}\n' + '\\\\\n'.join(
+            '\\begin{align*}\n' + '\\\\\n'.join(
             r'\frac{d%s}{d%s} &= %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
                 for v in self._vars ) + '\n\\end{align*}\n'
             '\\else\n' +
-	    '\\begin{dgroup*}\n\\begin{dmath*}\n' + '\\end{dmath*}\n\\begin{dmath*}\n'.join(
+            '\\begin{dgroup*}\n\\begin{dmath*}\n' + '\\end{dmath*}\n\\begin{dmath*}\n'.join(
              r'\frac{d%s}{d%s} = %s'%(latex(v),latex(self._time_variable),latex(self._flow[v]))
                 for v in self._vars ) + '\n\\end{dmath*}\n\\end{dgroup*}\n' +
-	    '\\fi\n')
+            '\\fi\n')
     def write_latex(self, filename, inline=False):
         """Output the system in LaTeX form to a file"""
-	if inline:
+        if inline:
             ltxout = open( filename, 'w' )
-	else:
-	    import latex_output
+        else:
+            import latex_output
             ltxout = latex_output.latex_output( filename )
         ltxout.write( self.latex_text() )
         ltxout.write( '\n\\vspace{24pt}\n' )
         ltxout.close()
     def flow( self, at=None ):
-	if at is None: at = self._vars
-	try:
-	    at( self._vars[0] )
-	except TypeError: # if it's not a Bindings, make it one
-	    at = Bindings( zip( self._vars, at ) )
-	return vector( [ at(self._flow[v]) for v in self._vars ] )
+        if at is None: at = self._vars
+        try:
+            at( self._vars[0] )
+        except TypeError: # if it's not a Bindings, make it one
+            at = Bindings( zip( self._vars, at ) )
+        return vector( [ at(self._flow[v]) for v in self._vars ] )
     def time_variable(self):
         """Provide the independent variable, for instance for plotting"""
         return self._time_variable
@@ -351,29 +357,29 @@ class ODESystem(SageObject):
 
         bindings: Bindings objects recording values for some variables and/or
         functions.
-	args: key-value pairs pairing names to values
+        args: key-value pairs pairing names to values
         """
         return deepcopy( self ).bind_in_place( *bindings, **args )
     def bind_in_place(self, *bindings, **args):
         """Apply bindings to my formulas without copying to a new object.
         See bind(), above.
-	"""
+        """
         b = Bindings( *bindings, **args )
         self._bindings.merge_in_place( b )
         self._flow = { k:self._bindings(v) for k,v in self._flow.items() }
-	return self
+        return self
     def solve(self, initial_conditions, end_time=20, start_time=0, step=0.1):
-	return self.desolve( initial_conditions, start_time=start_time, end_time=end_time, step=step)
+        return self.desolve( initial_conditions, start_time=start_time, end_time=end_time, step=step)
     def desolve(self, initial_conditions, end_time=20, start_time=0, step=0.1):
         """Use a numerical solver to find a concrete trajectory of the system.
 
         initial_conditions: list or Bindings of initial values for the state variables"""
-	## if initial_conditions is a Bindings, make a list
-	try: initial_conditions = [ initial_conditions(x) for x in self._vars ]
-	except TypeError: 
-	    ## or if it's a dict, make a list
-	    try: initial_conditions = [ initial_conditions[x] for x in self._vars ]
-	    except TypeError: pass
+        ## if initial_conditions is a Bindings, make a list
+        try: initial_conditions = [ initial_conditions(x) for x in self._vars ]
+        except TypeError: 
+            ## or if it's a dict, make a list
+            try: initial_conditions = [ initial_conditions[x] for x in self._vars ]
+            except TypeError: pass
         #print "desolve: %s, %s, %s, ivar=%s, end_points=%s, step=%s" % (
         #  [self._flow[v] for v in self._vars],
         #  self._vars,
@@ -381,15 +387,15 @@ class ODESystem(SageObject):
         #  self._time_variable,
         #  end_time,
         #  step )
-	#print "initial flow:", [ self._flow[x].subs( **( { str(k):v for k,v in zip([self._time_variable] + self._vars, [start_time] + initial_conditions ) } ) ) for x in self._vars ]
+        #print "initial flow:", [ self._flow[x].subs( **( { str(k):v for k,v in zip([self._time_variable] + self._vars, [start_time] + initial_conditions ) } ) ) for x in self._vars ]
         soln = desolve_system_rk4(
           [self._flow[v] for v in self._vars],
           self._vars, [ SR(x0) for x0 in [start_time] + initial_conditions ],
           ivar=self._time_variable,
           end_points=end_time, step=step )
         #return Trajectory(self, soln)
-	# this seems to help when sympy is involved
-	return Trajectory(self, [ [N(z) for z in l] for l in soln ])
+        # this seems to help when sympy is involved
+        return Trajectory(self, [ [N(z) for z in l] for l in soln ])
     def plot_vector_field(self, xlims, ylims, filename='', vf=None, xlabel=-1, ylabel=-1, **args):
         xlims = tuple( self._bindings.substitute( v ) for v in xlims )
         ylims = tuple( self._bindings.substitute( v ) for v in ylims )
@@ -435,69 +441,69 @@ class ODESystem(SageObject):
         add_hats = self.add_hats()
         return [ add_hats(v) for v in self._vars ]
     def symbolic_equilibria( self ):
-	return self.add_hats()
+        return self.add_hats()
     def limit( self, **lims ):
-	"""limit( var=val, ... ):
-	Return a transformed dynamical system, equal to this system with the
-	specified limits applied.
-	Can perform multiple transformations including
-	* Separate fast and slow timescales by changing parameters to
-	  zero, infinite values, or other threshold values
-	* Extract subsystems or other limiting cases by changing state
-	  variables to zero, or infinite or other values.
-	These functionalities will be implemented as needed."""
-	return deepcopy(self).limit_in_place( **lims )
+        """limit( var=val, ... ):
+        Return a transformed dynamical system, equal to this system with the
+        specified limits applied.
+        Can perform multiple transformations including
+        * Separate fast and slow timescales by changing parameters to
+          zero, infinite values, or other threshold values
+        * Extract subsystems or other limiting cases by changing state
+          variables to zero, or infinite or other values.
+        These functionalities will be implemented as needed."""
+        return deepcopy(self).limit_in_place( **lims )
     def limit_in_place( self, **lims ):
-	for k,v in lims.iteritems():
-	    ksr = SR(k)
-	    if ksr.is_symbol():
-		self._vars = [ x for x in self._vars if x != ksr ]
-		## to do: specialized version of this in BoxModel, to
-		## make transitions collapse to identity of boxes, and
-		## to change finite boxes to infinite sources, etc.
-		self._flow = { x:self._flow[x].limit( **{k:v} ) for x in self._vars }
-		self._bindings[ksr] = v
-	    else:
-		raise ValueError, "Not skillful enough to take limit {0} -> {1}".format( str(k), str(v) )
-	return self
+        for k,v in lims.iteritems():
+            ksr = SR(k)
+            if ksr.is_symbol():
+                self._vars = [ x for x in self._vars if x != ksr ]
+                ## to do: specialized version of this in BoxModel, to
+                ## make transitions collapse to identity of boxes, and
+                ## to change finite boxes to infinite sources, etc.
+                self._flow = { x:self._flow[x].limit( **{k:v} ) for x in self._vars }
+                self._bindings[ksr] = v
+            else:
+                raise ValueError, "Not skillful enough to take limit {0} -> {1}".format( str(k), str(v) )
+        return self
     def equilibria(self, *ranges, **opts):
-	solve_numerically = opts.get('solve_numerically',False)
+        solve_numerically = opts.get('solve_numerically',False)
         add_hats = self.add_hats()
-	equil_vars = self.equilibrium_vars()
-	if solve_numerically:
-	    ranges = { l[0]:l[1:] for l in ranges }
+        equil_vars = self.equilibrium_vars()
+        if solve_numerically:
+            ranges = { l[0]:l[1:] for l in ranges }
             def grid_range( var ):
                 try:
                     return numpy.arange( *ranges[var] )
                 except (TypeError, AttributeError):
                     return numpy.arange( -1, 1.01, 0.5 )
             grid_ranges = ( grid_range(var) for var in self._vars )
-	    flows = [ add_hats(rhs) for rhs in self._flow.values() ]
-	    def flowfun(vec):
-		dic = { x:v for x,v in zip(equil_vars,vec) }
-		return [ f.subs( dic ) for f in flows ]
-	    sols = set()
-	    import itertools, scipy.optimize
+            flows = [ add_hats(rhs) for rhs in self._flow.values() ]
+            def flowfun(vec):
+                dic = { x:v for x,v in zip(equil_vars,vec) }
+                return [ f.subs( dic ) for f in flows ]
+            sols = set()
+            import itertools, scipy.optimize
             for grid_point in itertools.product( *grid_ranges ):
-		print grid_point; sys.stdout.flush()
-		res = scipy.optimize.root( flowfun, grid_point, tol=1e-10 )
-		## caution: res.success is reporting false positives!
-		if res.success and all( round(f,ndigits=5)==0 for f in res.fun ):
-	            sols.add( tuple( [ round(N(x),ndigits=5) for x in res.x ] ) )
-	    equilibria = [ dict( zip( equil_vars,sol ) ) for sol in sols ]
-	else:
+                print grid_point; sys.stdout.flush()
+                res = scipy.optimize.root( flowfun, grid_point, tol=1e-10 )
+                ## caution: res.success is reporting false positives!
+                if res.success and all( round(f,ndigits=5)==0 for f in res.fun ):
+                    sols.add( tuple( [ round(N(x),ndigits=5) for x in res.x ] ) )
+            equilibria = [ dict( zip( equil_vars,sol ) ) for sol in sols ]
+        else:
             equil_eqns = [ 0 == add_hats(rhs) for rhs in self._flow.values() ]
             equilibria = solve( equil_eqns, *self.equilibrium_vars(), solution_dict=True )
         #equilibria = [ { k:(v) for k,v in soln.items() } for soln in solns ]
         return equilibria
     def nontrivial_equilibria(self):
         equilibria = self.equilibria()
-	print equilibria
+        print equilibria
         try: return [ eq for eq in equilibria if any( eq[hat(x)] != 0 for x in self._vars ) ]
-	except KeyError: return []
+        except KeyError: return []
     def interior_equilibria(self):
         try: return [ eq for eq in self.equilibria() if all( eq[hat(x)] != 0 for x in self._vars ) ]
-	except KeyError: return []
+        except KeyError: return []
     def jacobian(self, at=None):
         j = dict( ( ki, dict( ( kj, diff( self._flow[ki], kj ) ) for kj in self._vars ) ) for ki in self._vars )
         try:
@@ -676,7 +682,7 @@ class NumericalODESystem( ODESystem ):
         if self._flow is not None:
             self._flow = { k:bindings(v) for k,v in self._flow.items() }
     def solve(self, initial_conditions, start_time=0, end_time=20, step=0.1):
-	print 'NumericalODESystem.solve'
+        print 'NumericalODESystem.solve'
         times = numpy.arange( start_time, end_time, step )
         soln = fake_odeint( self, numpy.array( initial_conditions, float ), times, self )
         # make that timeseries of lists into timeseries of dictionaries
@@ -810,20 +816,20 @@ class PopulationDynamicsSystem(ODESystem):
     def population_vars(self):
         return [self._population_indexer[i] for i in self._population_indices]
     def n_populations(self):
-	return len( self._population_indices )
+        return len( self._population_indices )
     # don't set _population_indices directly, call this, to keep the flow in sync
     def set_population_indices(self, xi):
-	print 'set_population_indices:', xi
+        print 'set_population_indices:', xi
         self._population_indices = xi
         self._vars = self._nonpop_vars + self.population_vars()
         self._flow = self.flow()
         #self._flow = dict( (k,self._bindings(v)) for k,v in self._flow.items() )
         self._add_hats = None
     def remove_population(self, i):
-	self.set_population_indices( [ j for j in self._population_indices if j != i ] )
+        self.set_population_indices( [ j for j in self._population_indices if j != i ] )
     def remove_populations(self, ps):
-	sps = set(ps)
-	self.set_population_indices( [ j for j in self._population_indices if j not in sps ] )
+        sps = set(ps)
+        self.set_population_indices( [ j for j in self._population_indices if j not in sps ] )
     # subclasses have to provide the flow
     def flow(self): pass
     def mutate(self, resident_index):

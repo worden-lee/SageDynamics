@@ -44,9 +44,9 @@ class latex_output_base(SageObject):
     def write(self, *args):
         '''Output text directly.  Unlike file.write() (apparently), we support
         multiple arguments to write().'''
-	## note this used to use the latex() rather than latex_text(), which
-	## is a breaking change.  calling code that uses this in text mode will
-	## now get different and likely broken output.
+        ## note this used to use the latex() rather than latex_text(), which
+        ## is a breaking change.  calling code that uses this in text mode will
+        ## now get different and likely broken output.
         for a in args:
             self._output.write( latex_text( a ) )
         return self;
@@ -57,7 +57,7 @@ class latex_output_base(SageObject):
         return self;
     def write_block(self, *args):
         '''Output latex representation of each argument, set apart in \\[ \\]'''
-	## note doesn't really work for multiple rows - use write_align
+        ## note doesn't really work for multiple rows - use write_align
         self.write( '\n\\[' )
         self.write( '\\\\\n'.join( latex_math(o) for o in args ) )
         self.write( '\\]\n' )
@@ -78,7 +78,7 @@ class latex_output_base(SageObject):
         '''For convenience: write that one thing is equal to another (or more).
         This is because write_block( a == b ) often just writes "false"...'''
         return self.write_environment( 'align*',
-	    latex_math(args[0]) + ' &= ' + '\\\\\n    &= '.join( latex_math(a) for a in args[1:] ) );
+            latex_math(args[0]) + ' &= ' + '\\\\\n    &= '.join( latex_math(a) for a in args[1:] ) );
     def close(self):
         self._output.close()
         return self;
@@ -97,10 +97,10 @@ def environment( envname, *stuff, **keywords ):
 
 def align_eqns( *stuff ):
     return environment( 'align*',
-	wrap_latex( latex_math( stuff[0] ) + ' &= ' +
-	    '\\\\\n  &= '.join( latex_math( a ) for a in stuff[1:] ),
-	    'math'
-	)
+        wrap_latex( latex_math( stuff[0] ) + ' &= ' +
+            '\\\\\n  &= '.join( latex_math( a ) for a in stuff[1:] ),
+            'math'
+        )
     )
 
 def dgroup_eqns( *stuff ):
@@ -108,25 +108,25 @@ def dgroup_eqns( *stuff ):
     ## to do: refactor using dgroup() below, with some kind of
     ## equation class?
     return wrap_latex(
-	'\\iflatexml\n' +
-	## use align* instead when using latexml
-	latex_text( align_eqns( *stuff ) ) +
-	'\\else\n' +
-	latex_text(
-	    environment( 'dgroup*',
-	        environment( 'dmath*',
-		    latex_math( stuff[0] ) + ' = ' + latex_math( stuff[1] ),
-		    outer_mode='math'
-	        ),
-	        *[ environment( 'dmath*',
-		    ' = ' + latex_math( s ),
-		    outer_mode='math'
-	        ) for s in stuff[2:] ],
-		between_text = ''
-	    )
+        '\\iflatexml\n' +
+        ## use align* instead when using latexml
+        latex_text( align_eqns( *stuff ) ) +
+        '\\else\n' +
+        latex_text(
+            environment( 'dgroup*',
+                environment( 'dmath*',
+                    latex_math( stuff[0] ) + ' = ' + latex_math( stuff[1] ),
+                    outer_mode='math'
+                ),
+                *[ environment( 'dmath*',
+                    ' = ' + latex_math( s ),
+                    outer_mode='math'
+                ) for s in stuff[2:] ],
+                between_text = ''
+            )
         ) +
-	'\\fi\n',
-	'text'
+        '\\fi\n',
+        'text'
     )
 
 def dgroup( things, op=None ):
@@ -140,34 +140,34 @@ def dgroup( things, op=None ):
     #  looks nontrivial with how latex is done inside ginac)
     if op is None:
         return wrap_latex(
-	    '\\iflatexml\n' +
-	    latex_text( environment( 'align*', things ) ) +
-	    '\\else\n' +
-	    latex_text( environment( 'dgroup*',
-	        *[ environment( 'dmath*', s, outer_mode='math') for s in things[2:] ]
-	    ) ) +
-	    '\\fi\n',
-	    'text'
+            '\\iflatexml\n' +
+            latex_text( environment( 'align*', things ) ) +
+            '\\else\n' +
+            latex_text( environment( 'dgroup*',
+                *[ environment( 'dmath*', s, outer_mode='math') for s in things[2:] ]
+            ) ) +
+            '\\fi\n',
+            'text'
         )
     else:
-	return wrap_latex(
-	    '\\iflatexml\n' +
-	    latex_text( environment( 'align*',
-		*( latex_math( l[0] ) + ' ' + op + ' ' +
-		''.join(
-			('\\\\\n  &'+op+ ' ').join( latex_math( e ) for e in l[1:] ) )
-			for l in things )
-		) ) +
-	    '\\else' +
-	    latex_text( environment( 'dgroup*',
-		*( environment( 'dmath*',
-		    latex_math(l[0]) + ' ' + op + ' ' +
-		    ('\\\\\n  '+op+' ').join( latex_math(e) for e in l[1:] ),
-		    outer_mode='math' ) for l in things ),
-		between_text='' ) ) +
-	    '\\fi\n',
-	    'text'
-	)
+        return wrap_latex(
+            '\\iflatexml\n' +
+            latex_text( environment( 'align*',
+                *( latex_math( l[0] ) + ' ' + op + ' ' +
+                ''.join(
+                        ('\\\\\n  &'+op+ ' ').join( latex_math( e ) for e in l[1:] ) )
+                        for l in things )
+                ) ) +
+            '\\else' +
+            latex_text( environment( 'dgroup*',
+                *( environment( 'dmath*',
+                    latex_math(l[0]) + ' ' + op + ' ' +
+                    ('\\\\\n  '+op+' ').join( latex_math(e) for e in l[1:] ),
+                    outer_mode='math' ) for l in things ),
+                between_text='' ) ) +
+            '\\fi\n',
+            'text'
+        )
 
 class latex_output_file(latex_output_base):
     '''latex_output_file: class to write a latex file.
@@ -205,15 +205,15 @@ class wrap_latex( SageObject ):
     an object with a latex() method'''
     def __init__(self, text, mode='math'):
         self._str = text
-	self._mode = mode
+        self._mode = mode
     def _latex_(self):
         return self._str
     def latex_math(self):
-	if self._mode == 'math': return self._str
-	else: raise TypeError, 'Object does not have a math-mode LaTeX representation'
+        if self._mode == 'math': return self._str
+        else: raise TypeError, 'Object does not have a math-mode LaTeX representation'
     def latex_text(self):
-	if self._mode == 'math': return '$'+self._str+'$'
-	else: return self._str
+        if self._mode == 'math': return '$'+self._str+'$'
+        else: return self._str
 
 def xform_symbol(v, xform_str, xform_latex):
     """little utility function to do things like add a hat or similar thing
@@ -279,25 +279,25 @@ def write_tex_inline( vname, lname=None, fname=None, bindings=None ):
     if fname is None: fname = str(vname)
     ltx = latex_output_base( open( fname+'.value.tex-inline', 'w' ) )
     if bindings is None:
-	vval = vname
+        vval = vname
     else:
-	vval = bindings(vname)
+        vval = bindings(vname)
     vstr = str(vval)
     import re
     if re.search('\.\d*0$',vstr):
-	print 'change', vstr, ':',
-	vstr = str(RDF(vval))
+        print 'change', vstr, ':',
+        vstr = str(RDF(vval))
     if re.search('\.\d{4,}',vstr):
-	print 'reduce', vstr, ':',
-	vstr = str(N(vval, digits=3))
+        print 'reduce', vstr, ':',
+        vstr = str(N(vval, digits=3))
     if re.search('\.0$', vstr):
-	print 'truncate', vstr, ':'
-	vstr = str(ZZ(vval))
+        print 'truncate', vstr, ':'
+        vstr = str(ZZ(vval))
     print vstr
     if lname != '':
         ltx.write( '$' + lname + ' = ' + vstr + '$' )
     else:
-	ltx.write( '$' + vstr + '$' )
+        ltx.write( '$' + vstr + '$' )
     ltx.close()
 
 class column_vector(SageObject): # v.column() is missing?
@@ -333,26 +333,26 @@ def visual_D( indx, f, f_args ):
     #print 'D', indx, f, f_args
     if indx == [0] and len(f_args) == 1:
         return SR.symbol( '%s_prime_%s' % (
-		str(f),
-		str( f_args[0] )
-	    ),
-	    latex_name = '{%s}\'(%s)' % (
-		latex_math( f ),
-		latex_math( f_args[0] )
-	    )
-	)
+                str(f),
+                str( f_args[0] )
+            ),
+            latex_name = '{%s}\'(%s)' % (
+                latex_math( f ),
+                latex_math( f_args[0] )
+            )
+        )
     else:
-	return SR.symbol( 'partial_%s_%s_%s' % (
-		''.join( str(i) for i in indx ),
-		str(f),
-		'_'.join( str(i) for i in f_args )
-	    ),
-	    latex_name='\partial_{%s}%s(%s)' % (
-		''.join( latex_math(i) for i in indx ),
-		latex_math(f),
-		', '.join( latex_math(e) for e in f_args )
-	    )
-	)
+        return SR.symbol( 'partial_%s_%s_%s' % (
+                ''.join( str(i) for i in indx ),
+                str(f),
+                '_'.join( str(i) for i in f_args )
+            ),
+            latex_name='\partial_{%s}%s(%s)' % (
+                ''.join( latex_math(i) for i in indx ),
+                latex_math(f),
+                ', '.join( latex_math(e) for e in f_args )
+            )
+        )
 
 # useful parent class: expression converter that doesn't
 # do anything
@@ -366,8 +366,8 @@ class IdentityConverter(SubstituteFunction):
 
 class latex_partials_representation(IdentityConverter):
     def derivative( self, ex, operator ):
-	#print ex, ' - operator is ', operator
-	return visual_D( operator.parameter_set(), operator.function(), ex.operands() )
+        #print ex, ' - operator is ', operator
+        return visual_D( operator.parameter_set(), operator.function(), ex.operands() )
 
 ## Object to convert a symbolic expression to one that has the same
 ## latex representation, except that greek letters are sorted before
@@ -376,29 +376,29 @@ class GreekFirstLatex(IdentityConverter):
     #from sage.symbolic.function_factory import function
     #gmul = function( 'times', print_latex=
     def arithmetic( self, ex, operator ):
-	if operator == (2*SR.symbol('x')).operator():
-	    ## too simple? sort factors so that things whose latex string
-	    ## starts with '\\' are before the pure alphabetical ones.
-	    ll = sorted( ex.operands(), key=lambda v: latex(v).replace('\\',' ') )
-	    ## don't know a way to enforce order of arguments to multiply
-	    ## operator, so create a fake variable whose latex string is
-	    ## the desired product.
-	    ## thus the expression returned by this converter is suitable
-	    ## only for printing in latex, not for doing math or anything
-	    ## else with.
-	    Msym = SR.symbol( 'M_{}'.format( ZZ.random_element(1e+10) ), latex_name=' '.join(latex(v) for v in ll) )
-	    print latex(ex), ' ==> ', latex(Msym)
-	    return Msym
-	    ##
-	    factors = set( ex.operands() )
-	    greek_factors = set( [ v for v in factors if
-		( latex(v) == '\\'+str(v) or latex(v) == '\\lambda' )
-	    ] )
-	    return wrap_latex( ' '.join(
-		[ latex(v) for v in ( sorted( greek_factors ) + sorted( factors - greek_factors ) ) ]
-	    ), 'math' )
-	else:
-	    return operator( *map(self, ex.operands()) )
+        if operator == (2*SR.symbol('x')).operator():
+            ## too simple? sort factors so that things whose latex string
+            ## starts with '\\' are before the pure alphabetical ones.
+            ll = sorted( ex.operands(), key=lambda v: latex(v).replace('\\',' ') )
+            ## don't know a way to enforce order of arguments to multiply
+            ## operator, so create a fake variable whose latex string is
+            ## the desired product.
+            ## thus the expression returned by this converter is suitable
+            ## only for printing in latex, not for doing math or anything
+            ## else with.
+            Msym = SR.symbol( 'M_{}'.format( ZZ.random_element(1e+10) ), latex_name=' '.join(latex(v) for v in ll) )
+            print latex(ex), ' ==> ', latex(Msym)
+            return Msym
+            ##
+            factors = set( ex.operands() )
+            greek_factors = set( [ v for v in factors if
+                ( latex(v) == '\\'+str(v) or latex(v) == '\\lambda' )
+            ] )
+            return wrap_latex( ' '.join(
+                [ latex(v) for v in ( sorted( greek_factors ) + sorted( factors - greek_factors ) ) ]
+            ), 'math' )
+        else:
+            return operator( *map(self, ex.operands()) )
 
 GFL_memo = None
 ## return an expression whose latex representation has the greek letters
@@ -409,7 +409,7 @@ def greek_first_latex_ex(ex):
     if GFL_memo is None: GFL_memo = GreekFirstLatex()
     try: return GFL_memo(ex)
     except AttributeError: # if passed a non-expression
-	return ex
+        return ex
 
 ## return latex representation of an expression, with the greek letters
 ## sorted before the roman ones.

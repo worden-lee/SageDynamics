@@ -40,7 +40,7 @@ class AdaptiveDynamicsModel(ODESystem):
     def __init__(self, popdyn_model, phenotype_indexers,
         equilibrium=None,
         early_bindings=Bindings(), late_bindings=Bindings(),
-	workaround_limits=False):
+        workaround_limits=False):
         """Infer adaptive dynamics from population dynamics given an
         evolving phenotypic parameter that determines the variation in the
         relevant quantities in the population dynamics.
@@ -54,7 +54,7 @@ class AdaptiveDynamicsModel(ODESystem):
           stable nontrivial equilibrium is used.  If that's not unique,
           an exception is raised.  Note that trying to find stable
           equilibria can overwhelm the computer if parameters are unbound.
-	  One way to avoid that is by using model.symbolic_equilibria().
+          One way to avoid that is by using model.symbolic_equilibria().
         early_bindings: Whereas things that are simple variables in
           the population dynamics, say r_i, an intrinsic growth rate, now
           need to be treated as functions of phenotypic quantities, say
@@ -69,20 +69,20 @@ class AdaptiveDynamicsModel(ODESystem):
           calculations - and then expand that out to the value of r_i in
           late_bindings, and get the right answer without bogging the
           computer down.
-	workaround_limits: see http://trac.sagemath.org/ticket/17428
-	  The Maxima system sometimes loses track of limit operations
-	  and leaves temporary variables in final results. Enable this
-	  option to fix them by doing a straight substitute operation
-	  after the limit operation."""
-	try:
-		self._debug_output
-	except AttributeError:
-		self._debug_output = latex_output_base( write_to_string() )
+        workaround_limits: see http://trac.sagemath.org/ticket/17428
+          The Maxima system sometimes loses track of limit operations
+          and leaves temporary variables in final results. Enable this
+          option to fix them by doing a straight substitute operation
+          after the limit operation."""
+        try:
+                self._debug_output
+        except AttributeError:
+                self._debug_output = latex_output_base( write_to_string() )
         self._popdyn_model = popdyn_model
         self._phenotype_indexers = phenotype_indexers
         self._early_bindings = early_bindings
         self._late_bindings = late_bindings
-	self._workaround_limits = workaround_limits
+        self._workaround_limits = workaround_limits
         self.calculate_adaptive_dynamics()
         """Provide a mapping from e.g. SR.symbol('Xhat_i') to the
         population dynamics equilibrium value of X_i."""
@@ -126,7 +126,7 @@ class AdaptiveDynamicsModel(ODESystem):
             extended_system = deepcopy(self._popdyn_model)
             #self._extended_system.set_population_indices(self._popdyn_model._population_indices + ['i'])
             #print 'just before mutate:', extended_system.__class__.__name__, extended_system
-	    mutant_index = self.mutate( extended_system, resident_index )
+            mutant_index = self.mutate( extended_system, resident_index )
             #mutant_index = extended_system.mutate( resident_index )
             extended_system.bind_in_place( self._early_bindings )
             #self._debug_output.write_block( self._extended_system )
@@ -162,24 +162,24 @@ class AdaptiveDynamicsModel(ODESystem):
             print 'limit as', limdict
             dI_du = [ ( u[resident_index], limits( dI_dui, limdict ) )
                 for u, dI_dui in zip(self._phenotype_indexers, dI_du) ]
-	    if self._workaround_limits:
-		## first, if any limit operators left in there,
-		## replace the limit by a direct substitution
-		dI_du = [ ( u, d.substitute_function(
-		    sage.calculus.calculus._limit, 
-		    lambda e, f, t: ( e.subs({f:t}) if f in limdict else e )
-		) ) for u,d in dI_du ]
-		## second, if any of the bound variables left without the
-		## limit operator, substitute
-		dI_du = [ (u,d.subs(limdict)) for u,d in dI_du ]
+            if self._workaround_limits:
+                ## first, if any limit operators left in there,
+                ## replace the limit by a direct substitution
+                dI_du = [ ( u, d.substitute_function(
+                    sage.calculus.calculus._limit, 
+                    lambda e, f, t: ( e.subs({f:t}) if f in limdict else e )
+                ) ) for u,d in dI_du ]
+                ## second, if any of the bound variables left without the
+                ## limit operator, substitute
+                dI_du = [ (u,d.subs(limdict)) for u,d in dI_du ]
             #print 'as u_i->u_*:\n', join( (" dI/d%s: %s" % (u_j, dI_duj)
             #    for u_j, X_j, dI_duj in dI_du), '\n')
             print 'after those limits:\n  ', '\n  '.join(str(i) for u_j, i in dI_du)
             #from sage.interfaces.maxima_lib import maxima_lib
             #print maxima_lib( dI_du[0][1] )
             dI_du = [ (u_j, limits(dI_duj, {X_i: 0})) for u_j, dI_duj in dI_du ]
-	    if self._workaround_limits:
-		dI_du = [ (u,d.subs({X_i:0})) for u,d in dI_du ]
+            if self._workaround_limits:
+                dI_du = [ (u,d.subs({X_i:0})) for u,d in dI_du ]
             self._debug_output.write( 'Which comes out to\n\\begin{align*}\n', 
                 '\\\\\n'.join( '  \\frac{\\partial\\mathscr I}{\\partial %s} = %s' %
                     (latex(u_j), latex(dI_duj)) for u_j, dI_duj in dI_du ),
@@ -187,12 +187,12 @@ class AdaptiveDynamicsModel(ODESystem):
             #print 'after limits:\n  ', '\n  '.join(str(i) for u_j, i in dI_du)
             # The adaptive dynamics system is du/dt = \gamma \hat{X}_i dI/du.
             add_hats = self._popdyn_model.add_hats()
-	    ## todo: S should be one vector per population?
-	    ## careful handling here in case more than one population is
-	    ## adapting a given variable
-	    for u_j, dI_duj in dI_du:
-		if u_j not in self._vars: self._vars += [ u_j ]
-		self._S[u_j] = self._S.get(u_j,0) + add_hats(dI_duj) 
+            ## todo: S should be one vector per population?
+            ## careful handling here in case more than one population is
+            ## adapting a given variable
+            for u_j, dI_duj in dI_du:
+                if u_j not in self._vars: self._vars += [ u_j ]
+                self._S[u_j] = self._S.get(u_j,0) + add_hats(dI_duj) 
                 self._flow[u_j] = self._flow.get(u_j,0) + gamma*add_hats(X_r*dI_duj)
         self._debug_output.write( '\\[ ', 
             '\\mathbf S', latex( column_vector( [ u_j for u_j in self._S.keys() ] ) ), ' = ',
@@ -202,13 +202,13 @@ class AdaptiveDynamicsModel(ODESystem):
         # separately from each other
         return self._popdyn_model.fake_population_index()
     def mutate( self, pops, i ):
-	return pops.mutate(i)
+        return pops.mutate(i)
     def solve(self, initial_conditions, **opts):
-	continue_on_extinction = False #opts.pop( 'continue_on_extinction', False )
+        continue_on_extinction = False #opts.pop( 'continue_on_extinction', False )
         # check that initial populations are positive
         icbind = Bindings( { v:iv for v, iv in zip(self._vars, initial_conditions) } )
         if any( icbind(self._bindings(x)) <= 0 for x in self._popdyn_model.equilibrium_vars() ):
-	    print ( 'Aborting solve: initial population sizes are non-positive:',
+            print ( 'Aborting solve: initial population sizes are non-positive:',
                 str( [ x == N(icbind(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] ) )
             raise AdaptiveDynamicsException(
                 'Initial population sizes are non-positive: ' +
@@ -220,29 +220,29 @@ class AdaptiveDynamicsModel(ODESystem):
         #print 'timeseries:', trajectory._timeseries
         #print 'X at first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
         for i in range(len(trajectory._timeseries)):
-	    exts = [ x for x in xs if N(trajectory._timeseries[i](x)) <= 0 ]
+            exts = [ x for x in xs if N(trajectory._timeseries[i](x)) <= 0 ]
             if len( exts ) > 0:
-		if not continue_on_extinction:
+                if not continue_on_extinction:
                     print 'Adaptive dynamics cut short by extinction at ' + str( trajectory._timeseries[i] )
-		    #print '_timeseries[i]:', trajectory._timeseries[i]
-		    print 'at which, with', { x:self._bindings(x) for x in self._popdyn_model.equilibrium_vars() }
-		    print 'X values are', { x:trajectory._timeseries[i](self._bindings(x)) for x in self._popdyn_model.equilibrium_vars() }
-		    tsi = Bindings( { k:N(v) for k,v in trajectory._timeseries[i].iteritems() } )
-		    print 'with', tsi
-		    print 'equivalently ', { x:tsi(self._bindings(x)) for x in self._popdyn_model.equilibrium_vars() }
-		    print 'WTF', [ type(v) for v in trajectory._timeseries[i].values() ], '<-->', [ type(v) for v in tsi.values() ]
+                    #print '_timeseries[i]:', trajectory._timeseries[i]
+                    print 'at which, with', { x:self._bindings(x) for x in self._popdyn_model.equilibrium_vars() }
+                    print 'X values are', { x:trajectory._timeseries[i](self._bindings(x)) for x in self._popdyn_model.equilibrium_vars() }
+                    tsi = Bindings( { k:N(v) for k,v in trajectory._timeseries[i].iteritems() } )
+                    print 'with', tsi
+                    print 'equivalently ', { x:tsi(self._bindings(x)) for x in self._popdyn_model.equilibrium_vars() }
+                    print 'WTF', [ type(v) for v in trajectory._timeseries[i].values() ], '<-->', [ type(v) for v in tsi.values() ]
                     trajectory._timeseries = trajectory._timeseries[:i]
                     break
-		else: # this needs some thought
-		    pass #for ix in self._
+                else: # this needs some thought
+                    pass #for ix in self._
         return trajectory
     def bind_in_place(self, *bindings, **args):
-	b = Bindings( *bindings, **args )
+        b = Bindings( *bindings, **args )
         super(AdaptiveDynamicsModel, self).bind_in_place( b )
-	self._popdyn_model.bind_in_place( b )
-	for k,v in self._S.items():
-		self._S[k] = self._bindings( v )
-	return self
+        self._popdyn_model.bind_in_place( b )
+        for k,v in self._S.items():
+                self._S[k] = self._bindings( v )
+        return self
 
 class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel ):
     """Where AdaptiveDynamicsModel derives a closed expression for the
@@ -276,8 +276,8 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         self._early_bindings = early_bindings
         self._late_bindings = late_bindings
         self._equilibrium_function = equilibrium_function
-	## KILL ME - this init doesn't call AdaptiveDynamicsModel's init
-	self._workaround_limits = False
+        ## KILL ME - this init doesn't call AdaptiveDynamicsModel's init
+        self._workaround_limits = False
         self.calculate_adaptive_dynamics()
         print 'ad flow:', self._flow
         print '+ bindings:', early_bindings + late_bindings + popdyn_model._bindings
@@ -306,7 +306,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
                 answer = eq
         if answer is None:
             raise AdaptiveDynamicsException( "Could not find interior equilibrium" )
-	return Bindings( answer )
+        return Bindings( answer )
     def compute_flow( self, u, t, with_exceptions=False ):
         #print 'ode:'
         #print self
@@ -326,7 +326,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         #print 'eq flow:', eq( self._flow[self._vars[0]] )
         #print 'u eq flow:', [ u_bindings( eq( self._flow[v] ) ) for v in self._vars ]
         #sys.stdout.flush()
-	import numpy
+        import numpy
         try:
             dudt = numpy.array( [ N( u_bindings( eq( self._flow[v] ) ) ) for v in self._vars ], float )
         except TypeError:
@@ -395,7 +395,7 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
                 # test for whether they diverge
                 try:
                     #print 'test for branch at state', branched_state
-		    import numpy
+                    import numpy
                     flow = branched_ad.compute_flow( numpy.array( [ branched_state[v] for v in branched_ad._vars ], float ), self._equilibrium_detected_at )
                 except AdaptiveDynamicsException: #nope
                     #print 'exception!'

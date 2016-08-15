@@ -14,10 +14,10 @@ def R_ode_fn( self, name='odefn' ):
     code += name + ' <- function( t, st, pa ) {\n'
     code += '  ## state\n'
     for v in vars:
-	code += '  ' + str(v) + " <- st[['" + str(v) + "']]\n"
+        code += '  ' + str(v) + " <- st[['" + str(v) + "']]\n"
     code += '  ## parameters\n'
     for p in params:
-	code += '  ' + str(p) + " <- pa[['" + str(p) + "']]\n"
+        code += '  ' + str(p) + " <- pa[['" + str(p) + "']]\n"
     code += '  ## the derivative\n'
     code += '  dxdt <- list(c(\n'
     code += ',\n'.join( '    ' + str(v) + ' = ' + str(self._flow[v]) for v in vars ) + '\n'
