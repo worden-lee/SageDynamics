@@ -376,29 +376,36 @@ class GreekFirstLatex(IdentityConverter):
     #from sage.symbolic.function_factory import function
     #gmul = function( 'times', print_latex=
     def arithmetic( self, ex, operator ):
-        if operator == (2*SR.symbol('x')).operator():
-            ## too simple? sort factors so that things whose latex string
-            ## starts with '\\' are before the pure alphabetical ones.
-            ll = sorted( ex.operands(), key=lambda v: latex(v).replace('\\',' ') )
-            ## don't know a way to enforce order of arguments to multiply
-            ## operator, so create a fake variable whose latex string is
-            ## the desired product.
-            ## thus the expression returned by this converter is suitable
-            ## only for printing in latex, not for doing math or anything
-            ## else with.
-            Msym = SR.symbol( 'M_{}'.format( ZZ.random_element(1e+10) ), latex_name=' '.join(latex(v) for v in ll) )
-            print latex(ex), ' ==> ', latex(Msym)
-            return Msym
-            ##
-            factors = set( ex.operands() )
-            greek_factors = set( [ v for v in factors if
-                ( latex(v) == '\\'+str(v) or latex(v) == '\\lambda' )
-            ] )
-            return wrap_latex( ' '.join(
-                [ latex(v) for v in ( sorted( greek_factors ) + sorted( factors - greek_factors ) ) ]
-            ), 'math' )
-        else:
-            return operator( *map(self, ex.operands()) )
+	if operator == (2*SR.symbol('x')).operator():
+	    ## too simple? sort factors so that things whose latex string
+	    ## starts with '\\' are before the pure alphabetical ones.
+	    ll = sorted( ex.operands(), key=lambda v: latex(v).replace('\\',' ') )
+	    ## 1 ??
+	    if len( ll ) > 1: ll = [ l for l in ll if l != 1 ]
+	    ## -1 ?? this is weird, guess I don't understand signs in pynac
+	    lm = [ l for l in ll if l == -1 ]
+	    if lm:
+		ll = [ l for l in ll if l != -1 ]
+		ll[0] *= reduce( lambda x,y:x*y, lm, 1 )
+	    ## don't know a way to enforce order of arguments to multiply
+	    ## operator, so create a fake variable whose latex string is
+	    ## the desired product.
+	    ## thus the expression returned by this converter is suitable
+	    ## only for printing in latex, not for doing math or anything
+	    ## else with.
+	    Msym = SR.symbol( 'M_{}'.format( ZZ.random_element(1e+10) ), latex_name=' '.join(latex(v) for v in ll) )
+	    print latex(ex), ' ==> ', latex(Msym)
+	    return Msym
+	    ##
+	    factors = set( ex.operands() )
+	    greek_factors = set( [ v for v in factors if
+		( latex(v) == '\\'+str(v) or latex(v) == '\\lambda' )
+	    ] )
+	    return wrap_latex( ' '.join(
+		[ latex(v) for v in ( sorted( greek_factors ) + sorted( factors - greek_factors ) ) ]
+	    ), 'math' )
+	else:
+	    return operator( *map(self, ex.operands()) )
 
 GFL_memo = None
 ## return an expression whose latex representation has the greek letters
