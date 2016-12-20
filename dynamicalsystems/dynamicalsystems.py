@@ -130,7 +130,7 @@ class Trajectory(SageObject):
     def values(self, expr):
         bex = self._system._bindings(expr)
         return [ self.bind_value( t, bex ) for t in self._timeseries ]
-    def plot(self, xexpr, yexpr, zexpr=None, filename='', xlabel=-1, ylabel=-1, **args):
+    def plot(self, xexpr, yexpr, zexpr=None, filename='', xlabel=-1, ylabel=-1, label_transformation=lambda x:x, **args):
         """Make a 2-d or 3-d plot of some pair of symbolic expressions that can
         be resolved to values of the state variables, time variable and
         parameters, along this trajectory.
@@ -158,7 +158,7 @@ class Trajectory(SageObject):
                 #print 'iterate, plot',y
                 zargs = copy(args)
                 if 'color' not in zargs: zargs['color'] = colors.pop() 
-                if 'legend_label' not in zargs: zargs['legend_label'] = '$%s$'%latex(y)
+                if 'legend_label' not in zargs: zargs['legend_label'] = '$%s$'%latex( label_transformation(y) )
                 py = self.plot( xexpr, y, **zargs )
                 if P is None:
                     P = py
@@ -189,9 +189,9 @@ class Trajectory(SageObject):
             try: basestring
             except NameError: basestring=str
             if not isinstance( xlabel, basestring ):
-                xlabel = '$%s$' % latex(xlabel)
+                xlabel = '$%s$' % latex( label_transformation(xlabel) )
             if not isinstance( ylabel, basestring ):
-                ylabel = '$%s$' % latex(ylabel)
+                ylabel = '$%s$' % latex( label_transformation(ylabel) )
             P.axes_labels( [xlabel,ylabel] )
         if (filename != ''):
             P.save(filename)
@@ -436,7 +436,7 @@ class ODESystem(SageObject):
         # self.add_hats() returns the add-hats bindings
         return self._add_hats
     def remove_hats(self):
-        return Bindings( { v:k for k,v in self.add_hats().items() } )
+        return Bindings( { v:k for k,v in self.add_hats()._dict.items() } )
     def equilibrium_vars(self):
         add_hats = self.add_hats()
         return [ add_hats(v) for v in self._vars ]

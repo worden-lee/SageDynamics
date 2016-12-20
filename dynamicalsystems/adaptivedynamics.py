@@ -205,14 +205,17 @@ class AdaptiveDynamicsModel(ODESystem):
         return pops.mutate(i)
     def solve(self, initial_conditions, **opts):
         continue_on_extinction = False #opts.pop( 'continue_on_extinction', False )
+        ## initial_conditions might be a list, make sure it's a bindings
+        try:
+            initial_conditions = Bindings( { v:iv for v, iv in zip(self._vars, initial_conditions) } )
+        except: pass
         # check that initial populations are positive
-        icbind = Bindings( { v:iv for v, iv in zip(self._vars, initial_conditions) } )
-        if any( icbind(self._bindings(x)) <= 0 for x in self._popdyn_model.equilibrium_vars() ):
+        if any( initial_conditions(self._bindings(x)) <= 0 for x in self._popdyn_model.equilibrium_vars() ):
             print ( 'Aborting solve: initial population sizes are non-positive:',
-                str( [ x == N(icbind(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] ) )
+                str( [ x == N(initial_conditions(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] ) )
             raise AdaptiveDynamicsException(
                 'Initial population sizes are non-positive: ' +
-                str( [ x == N(icbind(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] )
+                str( [ x == N(initial_conditions(self._bindings(x))) for x in self._popdyn_model.equilibrium_vars() ] )
             )
         trajectory = super(AdaptiveDynamicsModel,self).solve(initial_conditions, **opts)
         # check that populations stay positive

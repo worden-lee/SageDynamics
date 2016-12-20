@@ -58,6 +58,7 @@ class latex_output_base(SageObject):
     def write_block(self, *args):
         '''Output latex representation of each argument, set apart in \\[ \\]'''
         ## note doesn't really work for multiple rows - use write_align
+        ## or dgroup
         self.write( '\n\\[' )
         self.write( '\\\\\n'.join( latex_math(o) for o in args ) )
         self.write( '\\]\n' )
@@ -93,6 +94,14 @@ def environment( envname, *stuff, **keywords ):
         between_text.join( l_fn(a) for a in stuff ) +
         '\n\\end{' + envname + '}\n',
         outer_mode
+    )
+
+def latex_block( *stuff ):
+    return wrap_latex(
+        '\n\\[\n  ' +
+        '\n  '.join( latex_math(a) for a in stuff ) +
+        '\n\\]\n',
+        'text'
     )
 
 def align_eqns( *stuff ):
