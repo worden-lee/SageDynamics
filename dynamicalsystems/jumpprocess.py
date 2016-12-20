@@ -158,7 +158,7 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
             print 'Reducing dimensions to', tuple(self._vars[:-1])
             reduce_bindings = dynamicalsystems.Bindings( { self._vars[-1]: 1 - sum(self._vars[:-1]) } )
             if len(p_vars) == len(self._vars):
-                reduce_bindings[p_vars[-1]] = 0
+                reduce_bindings.merge_in_place( { p_vars[-1] : 0 } )
                 p_vars = p_vars[:-1]
         else:
             reduce=False
@@ -173,6 +173,8 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
         if return_h: return H
         x_vars = self._vars[:len(p_vars)]
         return hamiltonian.HamiltonianODE( H, x_vars, p_vars, bindings=reduce_bindings )
-    def hamiltonian( self, **args ):
-        return self.hamiltonian_system( self, return_h=True, **args )
+    def hamiltonian( self, *args, **aargs ):
+        aaargs = { 'return_h':True }
+        aaargs.update( aargs )
+        return self.hamiltonian_system( self, return_h=True, *args, **aaargs )
     ## note there is vestigial lagrangian code elsewhere

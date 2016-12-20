@@ -282,6 +282,9 @@ def scriptedsymbol( base, superscripts=(), subscripts=() ):
 def subscriptedsymbol( base, *subscripts ):
     return scriptedsymbol( base, subscripts=subscripts )
 
+def superscriptedsymbol( base, *superscripts ):
+    return scriptedsymbol( base, superscripts=superscripts )
+
 # TODO: integrate with stuff above
 def write_tex_inline( vname, lname=None, fname=None, bindings=None ):
     if lname is None: lname = '\\'+str(vname)
