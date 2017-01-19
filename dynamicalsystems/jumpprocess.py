@@ -63,19 +63,19 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
     def update_time_and_state_w_queue(self, t, x):
         ## construct a persistent store of events, rates, and conditional
         ## waiting times (i.e. waiting time if it's the next event to happen).
-        ##  w = { i => (r,m,rate,waiting hazard,waiting time) }
+        ##  w = { i => (r,m,rate,waiting time) }
         import numpy.random
         def resample_hazard(i):
-            b,m,_,__,___ = self._discrete_event_store[i]
+            b,m,_,__ = self._discrete_event_store[i]
             r = m(*x)
             h = numpy.random.exponential( 1 )
             w = (h/r if r > 0 else oo)
-            self._discrete_event_store[i][2:5] = (r,h,w)
+            self._discrete_event_store[i][2:4] = (r,w)
         try:
             self._discrete_event_store
         except AttributeError:
             self._discrete_event_store = {
-                i : [r,fast_callable(m, vars=self._vars, domain=float),0,0,0]
+                i : [r,fast_callable(m, vars=self._vars, domain=float),0,0]
                 for i,(r,m) in enumerate(self._transitions)
             }
             for i in self._discrete_event_store.iterkeys():
@@ -98,9 +98,10 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
         ## no point if queue gets re-sorted every time, just find the minimum
         i = min(
             self._discrete_event_store.iterkeys(),
-            key=lambda i: self._discrete_event_store[i][4]
+            key=lambda i: self._discrete_event_store[i][3]
         )
-        t = t + self._discrete_event_store[i][4]
+        w = self._discrete_event_store[i][3]
+        t = t + w
         to_update = set()
         for (ix,xi),inc,v in zip( enumerate(x), self._discrete_event_store[i][0], self._vars ):
             if inc != 0:
@@ -112,14 +113,16 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
         ## update the affected rates and waits
         ##  w[i]
         def update_rate(i):
-            b,m,r,h,_ = self._discrete_event_store[i]
-            r = m(*x)
-            w = (h/r if r > 0 else oo)
-            self._discrete_event_store[i][2:5] = (r,h,w)
-        for i in to_update:
-            update_rate(i)
-        print t; sys.stdout.flush()
-        return ( t, x )
+            b,m,r,w = self._discrete_event_store[i]
+            rr = m(*x)
+            w = (w*r/rr if r > 0 and rr > 0 else oo)
+            self._discrete_event_store[i][2:4] = (rr,w)
+        for i in self._discrete_event_store.iterkeys():
+            self._discrete_event_store[i][3] -= w
+            if i in to_update:
+                update_rate(i)
+        print t+w; sys.stdout.flush()
+        return ( t + w, x )
     def deterministic_flow(self):
         flow = { v:0 for v in self._vars }
         for r,m in self._transitions:
