@@ -33,12 +33,15 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
         except TypeError: pass
         return super( JumpProcess, self ).solve( initial_state, start_time=start_time, end_time=end_time )
     def update_time_and_state(self, t, x):
+        return self.update_time_and_state_w_queue(t,x)
+    def update_time_and_state_uniform(self, t, x):
         try:
             self._transitions_fast
         except AttributeError:
             self._transitions_fast = [
                 (r,fast_callable(m, vars=self._vars, domain=float))
-                for r,m in self._transitions ]
+                for r,m in self._transitions
+            ]
         ## compute rates of all transitions from the current state
         ## and the total rate
         transrates = []
@@ -55,7 +58,68 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
         ## exponential waiting time given total rate
         import numpy.random
         tnext = t + numpy.random.exponential( self._grain/total_r )
+        print tnext; sys.stdout.flush()
         return ( tnext, xnext )
+    def update_time_and_state_w_queue(self, t, x):
+        ## construct a persistent store of events, rates, and conditional
+        ## waiting times (i.e. waiting time if it's the next event to happen).
+        ##  w = { i => (r,m,rate,waiting hazard,waiting time) }
+        import numpy.random
+        def resample_hazard(i):
+            b,m,_,__,___ = self._discrete_event_store[i]
+            r = m(*x)
+            h = numpy.random.exponential( 1 )
+            w = (h/r if r > 0 else oo)
+            self._discrete_event_store[i][2:5] = (r,h,w)
+        try:
+            self._discrete_event_store
+        except AttributeError:
+            self._discrete_event_store = {
+                i : [r,fast_callable(m, vars=self._vars, domain=float),0,0,0]
+                for i,(r,m) in enumerate(self._transitions)
+            }
+            for i in self._discrete_event_store.iterkeys():
+                resample_hazard(i)
+            ## record which events' rates are affected by which variables
+            self._events_by_var = {
+                v : set() for v in self._vars
+            }
+            for i,(r,m) in enumerate(self._transitions):
+                for v in m.variables():
+                    self._events_by_var[v].add(i)
+        ## construct queue of events sorted by waiting time
+        ##  q = [ i ]
+        #discrete_event_queue = sorted(
+        #    self._discrete_event_store.iterkeys(),
+        #    key = lambda i: self._discrete_event_store[i][4]
+        #)
+        ### pop the first event, update by doing that transition
+        #i = discrete_event_queue.pop(0)
+        ## no point if queue gets re-sorted every time, just find the minimum
+        i = min(
+            self._discrete_event_store.iterkeys(),
+            key=lambda i: self._discrete_event_store[i][4]
+        )
+        t = t + self._discrete_event_store[i][4]
+        to_update = set()
+        for (ix,xi),inc,v in zip( enumerate(x), self._discrete_event_store[i][0], self._vars ):
+            if inc != 0:
+                x[ix] += inc
+                to_update.update(self._events_by_var[v])
+        resample_hazard(i)
+        try: to_update.remove(i)
+        except KeyError: pass
+        ## update the affected rates and waits
+        ##  w[i]
+        def update_rate(i):
+            b,m,r,h,_ = self._discrete_event_store[i]
+            r = m(*x)
+            w = (h/r if r > 0 else oo)
+            self._discrete_event_store[i][2:5] = (r,h,w)
+        for i in to_update:
+            update_rate(i)
+        print t; sys.stdout.flush()
+        return ( t, x )
     def deterministic_flow(self):
         flow = { v:0 for v in self._vars }
         for r,m in self._transitions:

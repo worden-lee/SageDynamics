@@ -221,7 +221,11 @@ class AdaptiveDynamicsModel(ODESystem):
         # check that populations stay positive
         xs = [ self._bindings(x) for x in self._popdyn_model.equilibrium_vars() ]
         #print 'timeseries:', trajectory._timeseries
-        #print 'X at first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
+        print 'eq vars', self._popdyn_model.equilibrium_vars()
+        print 'self bindings:', self._bindings
+        print 'xs:', xs
+        print 'first pt of timeseries:', trajectory._timeseries[0]
+        print 'X at first pt of timeseries:', [ trajectory._timeseries[0](x) for x in xs ]
         for i in range(len(trajectory._timeseries)):
             exts = [ x for x in xs if N(trajectory._timeseries[i](x)) <= 0 ]
             if len( exts ) > 0:
