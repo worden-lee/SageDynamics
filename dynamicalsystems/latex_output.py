@@ -285,6 +285,19 @@ def subscriptedsymbol( base, *subscripts ):
 def superscriptedsymbol( base, *superscripts ):
     return scriptedsymbol( base, superscripts=superscripts )
 
+## inverse operation to scriptedsymbol
+## transforms an SR symbol, potentially with subscripts and superscripts,
+## to components base, subscripts, superscripts
+def unpacksymbol( s ):
+    import re
+    spl = re.split( '([_\^])', str(s) )
+    base = spl[0]
+    labels = { '_':[], '\^':[] }
+    for mark, label in zip( spl[1::2], spl[2::2] ):
+        labels[mark].append(label)
+    # todo: flair
+    return { 'base':base, 'subscripts':labels['_'], 'superscripts':labels['\^'] }
+
 # TODO: integrate with stuff above
 def write_tex_inline( vname, lname=None, fname=None, bindings=None ):
     if lname is None: lname = '\\'+str(vname)
