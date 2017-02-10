@@ -240,8 +240,8 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
         if return_h: return H
         x_vars = self._vars[:len(p_vars)]
         return hamiltonian.HamiltonianODE( H, x_vars, p_vars, bindings=reduce_bindings )
-    def hamiltonian( self, *args, **aargs ):
-        aaargs = { 'return_h':True }
+    def hamiltonian( self, p_vars=[], **aargs ):
+        aaargs = { 'p_vars':p_vars, 'return_h':True }
         aaargs.update( aargs )
-        return self.hamiltonian_system( self, return_h=True, *args, **aaargs )
+        return self.hamiltonian_system( **aaargs )
     ## note there is vestigial lagrangian code elsewhere
