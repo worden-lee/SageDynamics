@@ -591,7 +591,8 @@ class ODESystem(SageObject):
             "cimport sage.gsl.ode\n"
             "import sage.gsl.ode\n"
             "from sage.ext.interpreters.wrapper_rdf cimport Wrapper_rdf\n"
-            "include 'gsl.pxi'\n"
+            #"include 'gsl/gsl.pxi'\n"
+            "from sage.libs.gsl.all cimport *\n"
             "cdef class gsl_ode_system(sage.gsl.ode.ode_system):\n"
             + ''.join(
             "    cdef Wrapper_rdf _flow%d\n"%i for i in il
@@ -613,6 +614,7 @@ class ODESystem(SageObject):
             # need c_j() as well?
         )
         #print cython_code
+        from sage.misc import cython
         module = sage.misc.cython.compile_and_load( cython_code )
         T = ode_solver()
         #T.algorithm = 'bsimp'
@@ -623,16 +625,21 @@ class ODESystem(SageObject):
         return T
     def solve_gsl( self, initial_conditions, start_time=0, end_time=20, step=0.1):
         try:
-            self._gsl_system
-        except AttributeError:
-            self._gsl_system = self.gsl_system()
-        self._gsl_system.ode_solve(
+            initial_conditions = [ initial_conditions(v) for v in self._vars ]
+        except: pass
+        ## don't cache the cython thing - it breaks load_session
+        #try:
+        #    self._gsl_system
+        #except AttributeError:
+        #    self._gsl_system = self.gsl_system()
+        gsl_system = self.gsl_system()
+        gsl_system.ode_solve(
             t_span=[start_time, end_time],
             num_points = (end_time - start_time) / step + 1,
             y_0 = initial_conditions
         )
-        return Trajectory( self, ( [ t ] + ys for t,ys in self._gsl_system.solution ) )
-        return self._gsl_system.solution
+        print 'gsl solution', gsl_system.solution
+        return Trajectory( self, ( [ t ] + ys for t,ys in gsl_system.solution ) )
 
 # used by NumericalODESystem.solve()
 # unlike the standard odeint(), this fails when the du/dt function
@@ -819,7 +826,7 @@ class PopulationDynamicsSystem(ODESystem):
         return len( self._population_indices )
     # don't set _population_indices directly, call this, to keep the flow in sync
     def set_population_indices(self, xi):
-        print 'set_population_indices:', xi
+        #print 'set_population_indices:', xi
         self._population_indices = xi
         self._vars = self._nonpop_vars + self.population_vars()
         self._flow = self.flow()
