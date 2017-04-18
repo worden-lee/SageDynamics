@@ -468,6 +468,7 @@ class ODESystem(SageObject):
         return self
     def equilibria(self, *ranges, **opts):
         solve_numerically = opts.get('solve_numerically',False)
+        substitutions = Bindings( opts.get('substitutions', {}) )
         add_hats = self.add_hats()
         equil_vars = self.equilibrium_vars()
         if solve_numerically:
@@ -475,13 +476,15 @@ class ODESystem(SageObject):
             def grid_range( var ):
                 try:
                     return numpy.arange( *ranges[var] )
-                except (TypeError, AttributeError):
+                except (KeyError, TypeError, AttributeError):
                     return numpy.arange( -1, 1.01, 0.5 )
             grid_ranges = ( grid_range(var) for var in self._vars )
-            flows = [ add_hats(rhs) for rhs in self._flow.values() ]
+            flows = [ add_hats( substitutions( self._flow[v] ) ) for v in self._vars ]
             def flowfun(vec):
                 dic = { x:v for x,v in zip(equil_vars,vec) }
-                return [ f.subs( dic ) for f in flows ]
+                fvec = [ f.subs( dic ) for f in flows ]
+                #print fvec
+                return [ N( f ) for f in fvec ]
             sols = set()
             import itertools, scipy.optimize
             for grid_point in itertools.product( *grid_ranges ):
@@ -492,9 +495,9 @@ class ODESystem(SageObject):
                     sols.add( tuple( [ round(N(x),ndigits=5) for x in res.x ] ) )
             equilibria = [ dict( zip( equil_vars,sol ) ) for sol in sols ]
         else:
-            equil_eqns = [ 0 == add_hats(rhs) for rhs in self._flow.values() ]
+            equil_eqns = [ 0 == add_hats( substitutions( rhs ) ) for rhs in self._flow.values() ]
             equilibria = solve( equil_eqns, *self.equilibrium_vars(), solution_dict=True )
-        #equilibria = [ { k:(v) for k,v in soln.items() } for soln in solns ]
+            #equilibria = [ eq for eq in equilibria if all( add_hats(f).subs(eq) == 0 for f in self._flow.values() ) ]
         return equilibria
     def nontrivial_equilibria(self):
         equilibria = self.equilibria()
@@ -585,8 +588,18 @@ class ODESystem(SageObject):
         if filename is not None:
             bp.save( filename )
         return bp
-    def gsl_system(self):
-        il = range(len(self._vars))
+    def gsl_system(self, make_t_explicit=False):
+        if make_t_explicit:
+            il = range(len(self._vars)+1)
+            flow = copy(self._flow)
+            flow[ self._time_variable ] = SR(1)
+            vars = self._vars + [ self._time_variable ]
+            print 'making gsl system with t'; sys.stdout.flush()
+        else:
+            il = range(len(self._vars))
+            flow = self._flow
+            vars = self._vars
+            print 'making gsl system without t'; sys.stdout.flush()
         cython_code = (
             "cimport sage.gsl.ode\n"
             "import sage.gsl.ode\n"
@@ -618,27 +631,31 @@ class ODESystem(SageObject):
         module = sage.misc.cython.compile_and_load( cython_code )
         T = ode_solver()
         #T.algorithm = 'bsimp'
+        #print flow; sys.stdout.flush()
+        print 'in gsl:\n', [ (v, flow[v]) for v in vars ]
         T.function = module.gsl_ode_system( *(
-            fast_float( self._flow[v], *self._vars )
-            for v in self._vars
+            fast_float( flow[v], *vars )
+            for v in vars
         ) )
         return T
-    def solve_gsl( self, initial_conditions, start_time=0, end_time=20, step=0.1):
-        try:
-            initial_conditions = [ initial_conditions(v) for v in self._vars ]
-        except: pass
+    def solve_gsl( self, initial_conditions, start_time=0, end_time=20, step=0.1, make_t_explicit=False ):
         ## don't cache the cython thing - it breaks load_session
         #try:
         #    self._gsl_system
         #except AttributeError:
         #    self._gsl_system = self.gsl_system()
-        gsl_system = self.gsl_system()
+        gsl_system = self.gsl_system( make_t_explicit=make_t_explicit )
+        try:
+            initial_conditions = [ initial_conditions(v) for v in self._vars ]
+        except: pass
+        if make_t_explicit:
+            initial_conditions += [ start_time ]
         gsl_system.ode_solve(
             t_span=[start_time, end_time],
             num_points = (end_time - start_time) / step + 1,
             y_0 = initial_conditions
         )
-        print 'gsl solution', gsl_system.solution
+        #print 'gsl solution', gsl_system.solution
         return Trajectory( self, ( [ t ] + ys for t,ys in gsl_system.solution ) )
 
 # used by NumericalODESystem.solve()
