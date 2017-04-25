@@ -588,7 +588,11 @@ class ODESystem(SageObject):
         if filename is not None:
             bp.save( filename )
         return bp
-    def gsl_system(self, make_t_explicit=False):
+    def gsl_system(self, make_t_explicit=False, version=2):
+	## compatibility with multiple Sage releases
+	##  version == 0: pre 7.5?
+	##  version == 1: 7.5? 7.6?
+	##  version == 2: at least some 7.6 releases
         if make_t_explicit:
             il = range(len(self._vars)+1)
             flow = copy(self._flow)
@@ -601,34 +605,52 @@ class ODESystem(SageObject):
             vars = self._vars
             print 'making gsl system without t'; sys.stdout.flush()
         cython_code = (
-            "cimport sage.gsl.ode\n"
+              (
+	    "cimport sage.gsl.ode\n"
             "import sage.gsl.ode\n"
+		if version < 2 else
+	    "cimport sage.calculus.ode\n"
+	    "import sage.calculus.ode\n"
+	      ) +
             "from sage.ext.interpreters.wrapper_rdf cimport Wrapper_rdf\n"
-            #"include 'gsl/gsl.pxi'\n"
+	      + (
+	    "include 'gsl/gsl.pxi'\n"
+	        if version==0 else
             "from sage.libs.gsl.all cimport *\n"
+	      ) + (
             "cdef class gsl_ode_system(sage.gsl.ode.ode_system):\n"
-            + ''.join(
+	        if version < 2 else
+	    "cdef class gsl_ode_system(sage.calculus.ode.ode_system):\n"
+	      ) + ''.join(
             "    cdef Wrapper_rdf _flow%d\n"%i for i in il
-            ) +
+              ) +
             "    def __init__( self, "
-            + ', '.join("Wrapper_rdf f%d"%i for i in il)
-            + " ):\n"
-            + ''.join(
+              + ', '.join(
+	    "Wrapper_rdf f%d"%i for i in il
+	      ) +
+	    " ):\n"
+              + ''.join(
             "        self._flow%d = f%d\n"% (i,i) for i in il
-            ) +
+              ) +
             "    cdef int c_f( self, double t, double *y, double *dydt ):\n"
             #"        cdef double *result = [t]\n"
-            + (''.join(
+              + ''.join(
             "        self._flow%d.call_c( y, &dydt[%d] )\n"
             #"        dydt[%d] = result[0]\n"
                 % (i,i) for i in il
-            )) +
+              ) +
             "        return GSL_SUCCESS\n"
-            # need c_j() as well?
+            # sometime include c_j() as well?
         )
         #print cython_code
         from sage.misc import cython
-        module = sage.misc.cython.compile_and_load( cython_code )
+	try:
+            module = sage.misc.cython.compile_and_load( cython_code )
+	except RuntimeError as e:
+	    if version > 0:
+		return self.gsl_system( make_t_explicit=make_t_explicit, version=(version-1) )
+	    else:
+	        raise e
         T = ode_solver()
         #T.algorithm = 'bsimp'
         #print flow; sys.stdout.flush()
@@ -660,7 +682,7 @@ class ODESystem(SageObject):
 
 # used by NumericalODESystem.solve()
 # unlike the standard odeint(), this fails when the du/dt function
-# raises and exception
+# raises an exception
 # http://www.pythoneye.com/212_16439560/
 import scipy.integrate, numpy
 def fake_odeint(system, y0, t, args=None, Dfun=None):
