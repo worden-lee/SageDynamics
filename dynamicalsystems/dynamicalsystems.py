@@ -654,7 +654,7 @@ class ODESystem(SageObject):
         T = ode_solver()
         #T.algorithm = 'bsimp'
         #print flow; sys.stdout.flush()
-        print 'in gsl:\n', [ (v, flow[v]) for v in vars ]
+        #print 'in gsl:\n', [ (v, flow[v]) for v in vars ]
         T.function = module.gsl_ode_system( *(
             fast_float( flow[v], *vars )
             for v in vars
