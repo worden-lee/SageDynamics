@@ -10,8 +10,8 @@ def R_ode_fn( self, name='odefn' ):
     ## also may behave weirdly if any variable or parameter is called dxdt
     ## or something
     vars = sorted(self._vars, key=str)
-    params = set.union( *[ set( f.variables() ) for f in self._flow.values() ] ) - set(vars)
-    params = sorted(params, key=str)
+    #params = set.union( *[ set( f.variables() ) for f in self._flow.values() ] ) - set(vars)
+    #params = sorted(params, key=str)
     code = '#!/usr/bin/R\n'
     code += name + ' <- function( t, state, params ) {\n'
     #code += '  ## state\n'
@@ -22,15 +22,36 @@ def R_ode_fn( self, name='odefn' ):
     #    code += '  ' + str(p) + " <- pa[['" + str(p) + "']]\n"
     #code += '  ## the derivative\n'
     code += '  with(as.list(c(state,params)), {\n'
-    code += '    dxdt <- list(c(\n'
+    code += '    dxdt <- c(\n'
     code += ',\n'.join( '      ' + str(v) + ' = ' + str(self._flow[v]) for v in vars ) + '\n'
-    code += '    ))\n'
+    code += '    )\n'
+    code += '    dxdt <- dxdt[names(state)]\n'
+    code += '    return(list(dxdt))\n'
     code += '  })\n'
-    code += '  dxdt <- dxdt[names(state)]\n'
-    code += '  return(dxdt)\n'
     code += '}\n'
     return code
 
 dynamicalsystems.ODESystem.R_ode_fn = R_ode_fn
+
+def R_sample_code( self, odefn_name='odefn' ):
+    vars = sorted( self._vars, key=str )
+    params = set.union( *[ set( f.variables() ) for f in self._flow.values() ] ) - set(vars)
+    params = sorted(params, key=str)
+    code =  '#!/usr/bin/R\n'
+    code += 'library(deSolve)\n'
+    code += '\n'
+    code += 'initial.conditions <- c(\n'
+    code += '  ' + ',\n  '.join( str(v) + ' = 1' for v in vars ) + '\n'
+    code += ')\n'
+    code += '\n'
+    code += 'parameters <- c(\n'
+    code += '  ' + ',\n  '.join( str(p) + ' = 1' for p in params ) + '\n'
+    code += ')\n'
+    code += '\n'
+    code += 'times <- seq( 2017, 2021, by=1/10 )\n'
+    code += 'trajectory <- data.frame(lsoda(initial.conditions, times, ' + odefn_name + ', parms=parameters))\n'
+    return code
+
+dynamicalsystems.ODESystem.R_sample_code = R_sample_code
 
 ## todo: implementation of JumpProcess in R?
