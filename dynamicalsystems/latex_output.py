@@ -11,6 +11,7 @@ r'''\usepackage{amsmath}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{latexml}
+\usepackage{breqn}
 '''
 
 LATEX_HEADER = (
@@ -85,14 +86,19 @@ class latex_output_base(SageObject):
         return self;
 
 def environment( envname, *stuff, **keywords ):
-    outer_mode=keywords.pop( 'outer_mode', 'text')
-    inner_mode=keywords.pop( 'inner_mode', 'math' )
-    between_text = keywords.pop( 'between_text', '\\\\\n  ' )
+    outer_mode          = keywords.pop( 'outer_mode', 'text')
+    inner_mode          = keywords.pop( 'inner_mode', 'math' )
+    environment_options = keywords.pop( 'environment_options', () )
+    if isinstance(environment_options, basestring):
+        environment_options = (environment_options,)
+    between_text        = keywords.pop( 'between_text', '\\\\\n  ' )
     l_fn = (latex_math if inner_mode == 'math' else latex_text)
     return wrap_latex( 
-        '\n\\begin{' + envname + '}\n  ' +
-        between_text.join( l_fn(a) for a in stuff ) +
-        '\n\\end{' + envname + '}\n',
+        '\\begin{' + envname + '}' +
+        ('' if environment_options is () else '['+','.join(environment_options)+']')
+        + '\n' +
+        between_text.join( l_fn(a) for a in stuff ) + '\n' +
+        '\\end{' + envname + '}\n',
         outer_mode
     )
 
@@ -131,6 +137,7 @@ def dgroup_eqns( *stuff ):
                     ' = ' + latex_math( s ),
                     outer_mode='math'
                 ) for s in stuff[2:] ],
+                environment_options = 'frame={0pt},framesep={6pt}',
                 between_text = ''
             )
         ) +
@@ -153,7 +160,8 @@ def dgroup( things, op=None ):
             latex_text( environment( 'align*', things ) ) +
             '\\else\n' +
             latex_text( environment( 'dgroup*',
-                *[ environment( 'dmath*', s, outer_mode='math') for s in things[2:] ]
+                *[ environment( 'dmath*', s, outer_mode='math') for s in things[2:] ],
+                environment_options = 'frame={0pt},framesep={6pt}'
             ) ) +
             '\\fi\n',
             'text'
@@ -162,7 +170,7 @@ def dgroup( things, op=None ):
         return wrap_latex(
             '\\iflatexml\n' +
             latex_text( environment( 'align*',
-                *( latex_math( l[0] ) + ' ' + op + ' ' +
+                *( latex_math( l[0] ) + ' &' + op + ' ' +
                 ''.join(
                         ('\\\\\n  &'+op+ ' ').join( latex_math( e ) for e in l[1:] ) )
                         for l in things )
@@ -171,9 +179,11 @@ def dgroup( things, op=None ):
             latex_text( environment( 'dgroup*',
                 *( environment( 'dmath*',
                     latex_math(l[0]) + ' ' + op + ' ' +
-                    ('\\\\\n  '+op+' ').join( latex_math(e) for e in l[1:] ),
-                    outer_mode='math' ) for l in things ),
-                between_text='' ) ) +
+                    ('\n  '+op+' ').join( latex_math(e) for e in l[1:] ),
+                    outer_mode='math', between_text='\n  ' ) for l in things ),
+                environment_options='frame={0pt},framesep={6pt}',
+                between_text=''
+            ) ) +
             '\\fi\n',
             'text'
         )

@@ -330,9 +330,18 @@ class Bindings:
         """
         return self.latex_text()
     def latex_text(self):
+        from latex_output import dgroup, latex_text
+        return latex_text( dgroup( self.dgroup_contents(), op=r'\rightarrow' ) )
+        #return r'\DeclareMathSymbol{\becomes}{\mathrel}{latex( dgroup( self.dgroup_contents(), op=r'\becomes' ) )
         return '\\begin{align*}\n%s\n\\end{align*}' % self.latex_inner()
+    def dgroup_contents(self):
+        keys = sorted( self._dict.iterkeys(), key=str )
+        print 'dgroup keys', keys
+        my_pairs = [ (k,self._dict[k]) for k in keys ]
+        return my_pairs + self._function_bindings.dgroup_contents()
     def latex_inner(self):
-        ltx = ' \\\\\n'.join( '  %s &\\to %s' % (latex(key), latex(val)) for key, val in self._dict.items() )
+        keys = sorted( self._dict.iterkeys(), key=str )
+        ltx = ' \\\\\n'.join( '  %s &\\to %s' % (latex(key), latex(val)) for key in keys for val in (self._dict[key],) )
         try:
             flx = self._function_bindings.latex_inner()
             if ltx == '':
@@ -691,6 +700,8 @@ class FunctionBindings(Bindings,dict):
     def _inner_repr(self):
         # would like to use unicode arrow u'\u2192' but causes output codec error
         return ', '.join( '%s(%s) -> %s' % (key[0], ','.join( str(k) for k in key[1] ), str(val)) for key,val in self.items() )
+    def dgroup_contents(self):
+        return [ (k[0](*k[1]),v) for k,v in self.iteritems() ]
     def latex_inner(self):
         return '\\\\\n'.join( '  %s(%s) &\\to %s' % ( key[0], ','.join( latex(a) for a in key[1] ), latex( val ) ) for key, val in self.items() )
     def substitute(self, expr):
