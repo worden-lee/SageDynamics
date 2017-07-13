@@ -1,9 +1,10 @@
 import dynamicalsystems
+import bindings
 
 ## emit code implementing ODESystem's dynamics in R
 
 ## TODO: use with(as.list(st,pa)) as in https://cran.r-project.org/web/packages/deSolve/vignettes/deSolve.pdf
-def R_ode_fn( self, name='odefn' ):
+def R_ode_fn( self, name='odefn', auxiliary_variables=bindings.Bindings() ):
     ## this translation is naive: it only works if all the left and right
     ## hand sides of the Sage expressions involved, when printed in string
     ## form, yield valid R syntax.
@@ -22,6 +23,13 @@ def R_ode_fn( self, name='odefn' ):
     #    code += '  ' + str(p) + " <- pa[['" + str(p) + "']]\n"
     #code += '  ## the derivative\n'
     code += '  with(as.list(c(state,params)), {\n'
+    ## if there are auxiliary values in the ODE that are actually
+    ## longer expressions in the state and parameters, expand them
+    ## before use. For example, if the ODE includes N, and N is
+    ## actually shorthand for S+I.
+    for k,v in auxiliary_variables._dict.iteritems():
+        ## note if there are FunctionBindings in the Bindings they'll be ignored
+        code += '    ' + str(k) + ' <- ' + str(v) + '\n'
     code += '    dxdt <- c(\n'
     code += ',\n'.join( '      ' + str(v) + ' = ' + str(self._flow[v]) for v in vars ) + '\n'
     code += '    )\n'
