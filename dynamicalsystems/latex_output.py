@@ -267,11 +267,14 @@ def hat(v):
 def dot(v):
     return add_flair(v, 'dot')
 
-def scriptedsymbol( base, superscripts=(), subscripts=() ):
+def scriptedsymbol( base, superscripts=(), subscripts=(), make_symbolic=False ):
     try:
         base.expand() # see if it's an expression
     except AttributeError: # if not
         base = SR.symbol( base ) # it is now
+    if make_symbolic:
+        subscripts = [ SR(s) for s in subscripts ]
+        superscripts = [ SR(s) for s in superscripts ]
     name, latex_name = str(base), '{%s}'%latex(base)
     import sys
     #print base, 'sub', subscripts, 'super', superscripts; sys.stdout.flush()
@@ -289,11 +292,13 @@ def scriptedsymbol( base, superscripts=(), subscripts=() ):
             latex_name += '_{%s}' % latex(subscripts[0])
     return SR.symbol( name, latex_name=latex_name )
 
-def subscriptedsymbol( base, *subscripts ):
-    return scriptedsymbol( base, subscripts=subscripts )
+def subscriptedsymbol( base, *subscripts, **dic ):
+    make_symbolic = dic.pop( 'make_symbolic', False )
+    return scriptedsymbol( base, subscripts=subscripts, make_symbolic=make_symbolic )
 
-def superscriptedsymbol( base, *superscripts ):
-    return scriptedsymbol( base, superscripts=superscripts )
+def superscriptedsymbol( base, *superscripts, **dic ):
+    make_symbolic = dic.pop( 'make_symbolic', False )
+    return scriptedsymbol( base, superscripts=superscripts, make_symbolic=make_symbolic )
 
 ## inverse operation to scriptedsymbol
 ## transforms an SR symbol, potentially with subscripts and superscripts,
