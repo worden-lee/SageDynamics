@@ -336,7 +336,7 @@ class Bindings:
         return '\\begin{align*}\n%s\n\\end{align*}' % self.latex_inner()
     def dgroup_contents(self):
         keys = sorted( self._dict.iterkeys(), key=str )
-        print 'dgroup keys', keys
+        #print 'dgroup keys', keys
         my_pairs = [ (k,self._dict[k]) for k in keys ]
         return my_pairs + self._function_bindings.dgroup_contents()
     def latex_inner(self):

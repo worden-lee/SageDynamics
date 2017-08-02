@@ -118,7 +118,7 @@ def align_eqns( *stuff ):
         )
     )
 
-def dgroup_eqns( *stuff ):
+def xdgroup_eqns( *stuff ):
     ## write latex for a group of aligned equations using dgroup
     ## to do: refactor using dgroup() below, with some kind of
     ## equation class?
@@ -144,6 +144,9 @@ def dgroup_eqns( *stuff ):
         '\\fi\n',
         'text'
     )
+
+def dgroup_eqns( *eqns ):
+    return dgroup( [ eqn.operands() for eqn in eqns ], op='=' )
 
 def dgroup( things, op=None ):
     ## latex for a list of relational expressions, aligned using dgroup
@@ -256,9 +259,18 @@ def xform_symbol(v, xform_str, xform_latex):
     latex_name = xform_latex( ml.group(1), ml.group(2) )
     return SR.symbol( name, latex_name=latex_name )
 
+def curly_protect( s ):
+    if isinstance(s, basestring):
+        lx = s
+    else:
+        lx = latex(s)
+    while lx[0] == '{' and lx[-1] == '}':
+        lx = lx[1:-1]
+    return '{%s}'%lx
+
 def add_flair(v, flair):
     def xform_str( base, subs ): return base + flair + subs
-    def xform_latex( base, subs ): return '\\' + flair + '{' + base + '}' + subs
+    def xform_latex( base, subs ): return '\\' + flair + curly_protect(base) + subs
     return xform_symbol(v, xform_str, xform_latex)
 
 def hat(v):
@@ -275,19 +287,19 @@ def scriptedsymbol( base, superscripts=(), subscripts=(), make_symbolic=False ):
     if make_symbolic:
         subscripts = [ SR(s) for s in subscripts ]
         superscripts = [ SR(s) for s in superscripts ]
-    name, latex_name = str(base), '{%s}'%latex(base)
+    name, latex_name = str(base), curly_protect(base)
     import sys
     #print base, 'sub', subscripts, 'super', superscripts; sys.stdout.flush()
     if len(superscripts) > 0:
         name += '^' + '^'.join(str(s) for s in superscripts)
         if len(superscripts) > 1:
-            latex_name += '^{%s}' % ''.join('{%s}'%latex(s) for s in superscripts)
+            latex_name += '^{%s}' % ''.join(curly_protect(s) for s in superscripts)
         else:
             latex_name += '^{%s}' % latex(superscripts[0])
     if len(subscripts) > 0:
         name += '_' + '_'.join(str(s) for s in subscripts)
         if len(subscripts) > 1:
-            latex_name += '_{%s}' % ''.join('{%s}'%latex(s) for s in subscripts)
+            latex_name += '_{%s}' % ''.join(curly_protect(s) for s in subscripts)
         else:
             latex_name += '_{%s}' % latex(subscripts[0])
     return SR.symbol( name, latex_name=latex_name )
@@ -376,8 +388,8 @@ def visual_D( indx, f, f_args ):
                 str(f),
                 str( f_args[0] )
             ),
-            latex_name = '{%s}\'(%s)' % (
-                latex_math( f ),
+            latex_name = '%s\'(%s)' % (
+                curly_protect( latex_math( f ) ),
                 latex_math( f_args[0] )
             )
         )

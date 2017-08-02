@@ -7,6 +7,7 @@ sys.path.append(".")
 
 from sage.all import *
 import dynamicalsystems, hamiltonian, bindings, stochasticdynamics
+from differenceequation import *
 
 def mk_var( x, *args ):
     return SR.symbol( x+'_'+ '_'.join( str(a).replace('/','_') for a in args ),
@@ -138,6 +139,10 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
             self.deterministic_flow(),
             self._vars, time_variable, bindings=bindings
         )
+    def approximate_deterministic_difference_equation(self, step=1., time_variable=SR.symbol('t'), bindings=dynamicalsystems.Bindings()):
+        flow = self.deterministic_flow()
+        mapp = { v:max_symbolic(0,v + step*flow[v]) for v in flow.keys() }
+        return DifferenceEquationSystem( mapp, self._vars, step=step, time_variable=time_variable, bindings=bindings )
     def stochastic_states( self, N ):
         from itertools import product
         if not all( sum(r) == 0 for r,_ in self._transitions ):

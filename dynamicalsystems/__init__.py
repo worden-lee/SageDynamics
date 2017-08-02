@@ -7,6 +7,7 @@ sys.path.append(".")
 
 from bindings import *
 from dynamicalsystems import *
+from differenceequation import *
 from stochasticdynamics import *
 from hamiltonian import *
 from jumpprocess import *

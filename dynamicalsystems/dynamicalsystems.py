@@ -219,9 +219,13 @@ class indexer(SageObject):
     f: if f is a string, the indexer constructs an expression "f_i".
        if f is a function, the indexer uses the value of f(i).
        In either case, if the result is a string, it parses it into
-       a sage expression object."""
-    def __init__(self, f):
+       a sage expression object.
+    l: if f is a string, l can also be a string. The expression
+       constructed will have latex representation {l}_{i}.
+       Defaults to the value of f."""
+    def __init__(self, f, l=None):
         self._f = f
+        self._l = ( l if l is not None else f )
     def __getitem__(self, i):
         try:
             return symbolic_expression(self._f(i))
@@ -229,7 +233,10 @@ class indexer(SageObject):
             try:
                 return self._f(i)
             except TypeError:
-                return symbolic_expression("%s_%s" % (self._f,i))
+                return SR.symbol(
+                    "%s_%s" % (self._f,i),
+                    latex_name='%s_%s'%(curly_protect(self._l),curly_protect(i))
+                )
 
 # this class was nested inside indexer_2d, but it broke pickling
 class indexer_2d_inner(indexer):
@@ -598,12 +605,12 @@ class ODESystem(SageObject):
             flow = copy(self._flow)
             flow[ self._time_variable ] = SR(1)
             vars = self._vars + [ self._time_variable ]
-            print 'making gsl system with t'; sys.stdout.flush()
+            #print 'making gsl system with t'; sys.stdout.flush()
         else:
             il = range(len(self._vars))
             flow = self._flow
             vars = self._vars
-            print 'making gsl system without t'; sys.stdout.flush()
+            #print 'making gsl system without t'; sys.stdout.flush()
         cython_code = (
               (
 	    "cimport sage.gsl.ode\n"
