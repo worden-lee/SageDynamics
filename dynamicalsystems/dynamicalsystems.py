@@ -502,9 +502,28 @@ class ODESystem(SageObject):
                     sols.add( tuple( [ round(N(x),ndigits=5) for x in res.x ] ) )
             equilibria = [ dict( zip( equil_vars,sol ) ) for sol in sols ]
         else:
-            equil_eqns = [ 0 == add_hats( substitutions( rhs ) ) for rhs in self._flow.values() ]
+            if False:
+                ## try polynomial case
+                print ':'; sys.stdout.flush()
+                P_R = PolynomialRing( QQ, len(self._vars), 'x' )
+                print '::'; sys.stdout.flush()
+                xx = P_R.gens()
+                print ':::', xx; sys.stdout.flush()
+                subs_1 = { v:x for v,x in zip( self._vars, xx ) }
+                tt = tuple( P_R( substitutions( rhs ).subs( subs_1 ) ) for rhs in self._flow.values() )
+                print ':::', tt; sys.stdout.flush()
+                I = tt * P_R
+                print ':: I ', I; sys.stdout.flush()
+                B = I.groebner_basis()
+                ## not finding anything
+                print B; sys.stdout.flush()
+            ## fall back on regular Maxima solving
+            equil_eqns = [ add_hats( substitutions( rhs ) ) for rhs in self._flow.values() ]
+            #equilibria = solve( equil_eqns, *self.equilibrium_vars(), to_poly_solve=True, solution_dict=True )
             equilibria = solve( equil_eqns, *self.equilibrium_vars(), solution_dict=True )
-            #equilibria = [ eq for eq in equilibria if all( add_hats(f).subs(eq) == 0 for f in self._flow.values() ) ]
+            abseps = 1e-5
+            equilibria = [ eq for eq in equilibria if all( -abseps < add_hats(f).subs(eq) < abseps for f in self._flow.values() ) ]
+            print equilibria
         return equilibria
     def nontrivial_equilibria(self):
         equilibria = self.equilibria()
