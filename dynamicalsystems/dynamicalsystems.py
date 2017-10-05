@@ -250,14 +250,10 @@ class indexer_2d_inner(indexer):
 class indexer_2d(indexer):
     """Instead of mapping i |-> x_i, this does a 2-step mapping
     i |-> j |-> x_i_j.  That is, indexer_2d('x')[i][j] produces x_i_j."""
-    def __inner_class(self):
+    def inner_class(self):
         return indexer_2d_inner
-    def __init__(self, f, inner_class=None):
-        if inner_class is None: self._inner_class = self.__inner_class()
-        else: self._inner_class = inner_class
-        super(indexer_2d,self).__init__(f)
     def __getitem__(self, i):
-        return self._inner_class( self._f, i )
+        return self.inner_class()( self._f, i )
 
 class indexer_2d_reverse_inner(indexer):
     def __init__(self, f, j):
@@ -271,8 +267,6 @@ class indexer_2d_reverse(indexer_2d):
     """Just like indexer_2d but maps j |-> i |-> x_i_j rather than to
     x_j_i as the other one would do.  Useful when you want a way to
     generate all x_i_j for a given j, as I do."""
-    #def __getitem__(self, j):
-    #    return indexer_2d_reverse_inner( self._f, j )
     def inner_class(self):
         return indexer_2d_reverse_inner
 
@@ -416,14 +410,14 @@ class ODESystem(SageObject):
         if (filename != ''):
             PL.save(filename)
         return PL
-    def plot_isoclines(self, xlims, ylims, isoclines=None, filename='', xlabel=-1, ylabel=-1, **args):
+    def plot_isoclines(self, xlims, ylims, isoclines=None, bindings=Bindings(), filename='', xlabel=-1, ylabel=-1, **args):
         xlims = tuple( self._bindings.substitute( v ) for v in xlims )
         ylims = tuple( self._bindings.substitute( v ) for v in ylims )
         if isoclines is None:
             isoclines = [ (v,0) for v in self._vars ]
         p = Graphics()
         for v, z in isoclines:
-            p += implicit_plot( self._flow[v] == z, xlims, ylims, **args )
+            p += implicit_plot( bindings( self._flow[v] ) == z, xlims, ylims, **args )
         if (xlabel == -1): xlabel = xlims[0]
         if (ylabel == -1): ylabel = ylims[0]
         p.axes_labels( ['$%s$'%latex(v) for v in (xlabel,ylabel)] )
@@ -469,7 +463,7 @@ class ODESystem(SageObject):
                 ## make transitions collapse to identity of boxes, and
                 ## to change finite boxes to infinite sources, etc.
                 self._flow = { x:self._flow[x].limit( **{k:v} ) for x in self._vars }
-                self._bindings[ksr] = v
+                self._bindings += { ksr:v }
             else:
                 raise ValueError, "Not skillful enough to take limit {0} -> {1}".format( str(k), str(v) )
         return self
@@ -520,9 +514,17 @@ class ODESystem(SageObject):
             ## fall back on regular Maxima solving
             equil_eqns = [ add_hats( substitutions( rhs ) ) for rhs in self._flow.values() ]
             #equilibria = solve( equil_eqns, *self.equilibrium_vars(), to_poly_solve=True, solution_dict=True )
+            print 'solve equil. equations', equil_eqns
             equilibria = solve( equil_eqns, *self.equilibrium_vars(), solution_dict=True )
-            abseps = 1e-5
-            equilibria = [ eq for eq in equilibria if all( -abseps < add_hats(f).subs(eq) < abseps for f in self._flow.values() ) ]
+            print 'solution(s)', equilibria
+            ## what is this? checking if they're really equilibria?
+            ## how about if solve() returns nonsolutions, I'll deal with that
+            ## problem at the root
+            if False:
+                eqflows = [ { k:add_hats(f).subs(eq).expand() for k,f in self._flow.iteritems() } for eq in equilibria ]
+                print 'flows at solutions:', eqflows
+                abseps = 1e-5
+                equilibria = [ eq for eq in equilibria if all( -abseps < add_hats(f).subs(eq).expand() < abseps for f in self._flow.values() ) ]
             print equilibria
         return equilibria
     def nontrivial_equilibria(self):
