@@ -15,7 +15,7 @@ class DifferenceEquationSystem(SageObject):
     and can use it in numerical integration as well as making it available
     for symbolic manipulations.
     """
-    def __init__(self, map, vars, time_variable=SR.var('t'), step=1.,
+    def __init__(self, map, vars, time_variable=SR.var('t'), step=1,
             bindings=Bindings()):
         """Construct from the basic data.
 
@@ -93,7 +93,7 @@ class DifferenceEquationSystem(SageObject):
         self._bindings.merge_in_place( b )
         self._map = { k:self._bindings(v) for k,v in self._map.items() }
         return self
-    def solve(self, initial_conditions, start_time=0, end_time=20, step=1., bindings=Bindings()):
+    def solve(self, initial_conditions, start_time=0, end_time=20, bindings=Bindings()):
         """Construct a concrete trajectory of the system.
 
         initial_conditions: list or Bindings of initial values for the state variables"""
@@ -106,10 +106,12 @@ class DifferenceEquationSystem(SageObject):
         from numpy import arange
         state = initial_conditions
         timeseries = []
-        for t in arange( start_time, end_time+step, step ):
+        t = start_time
+        while t <= end_time:
             if t > start_time:
                 state = self.update_state( state, t, bindings=bindings )
             timeseries.append( Bindings( { self._time_variable:t }, { v:x for v,x in zip(self._vars,state) } ) )
+            t += self._step
         return Trajectory(self, timeseries)
     def cython_map_function(self):
         self._parameters = list( set().union( m.variables() for m in self._map.values() ).difference( self._vars ) )

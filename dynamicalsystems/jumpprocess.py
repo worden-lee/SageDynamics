@@ -139,9 +139,9 @@ class JumpProcess( stochasticdynamics.FiniteDimensionalStochasticDynamics ):
             self.deterministic_flow(),
             self._vars, time_variable, bindings=bindings
         )
-    def approximate_deterministic_difference_equation(self, step=1., time_variable=SR.symbol('t'), bindings=dynamicalsystems.Bindings()):
+    def approximate_deterministic_difference_equation(self, step=1, time_variable=SR.symbol('t'), bindings=dynamicalsystems.Bindings()):
         flow = self.deterministic_flow()
-        mapp = { v:max_symbolic(0,v + step*flow[v]) for v in flow.keys() }
+        mapp = { v:(v + step*flow[v]) for v in flow.keys() }
         return DifferenceEquationSystem( mapp, self._vars, step=step, time_variable=time_variable, bindings=bindings )
     def stochastic_states( self, N ):
         from itertools import product
