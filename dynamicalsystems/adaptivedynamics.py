@@ -103,11 +103,11 @@ class AdaptiveDynamicsModel(ODESystem):
         super(AdaptiveDynamicsModel, self).__init__(
             self._flow,
             self._vars, #list(self._flow.keys()),
-            bindings=early_bindings + late_bindings + popdyn_model._bindings + self._equilibrium
+            bindings=popdyn_model._bindings + self._equilibrium + early_bindings + late_bindings
         )
         # after the late bindings it might need going over
         # to resolve the limits
-        #print 'and after:', self._vars[0], '=>', self._flow[self._vars[0]]
+        print 'and after:\n', self #self._vars[0], '=>', self._flow[self._vars[0]]
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write( self )
         self._debug_output.close()
@@ -119,7 +119,7 @@ class AdaptiveDynamicsModel(ODESystem):
         self._flow = {}
         self._S = {}
         gamma = SR.var('gamma')
-        #print 'ad popdyn:', self._popdyn_model
+        print 'ad popdyn:', self._popdyn_model
         for resident_index in self._popdyn_model._population_indices:
             X_r = self._popdyn_model._population_indexer[ resident_index ]
             # TODO: deepcopy not deep enough?
@@ -137,14 +137,17 @@ class AdaptiveDynamicsModel(ODESystem):
             self._debug_output.write( self._popdyn_model )
             self._debug_output.write( "Extended pop-dyn system: " )
             self._debug_output.write( extended_system )
+            print 'Extended pop-dyn (mutate', resident_index, '):\n', extended_system
             X_i = extended_system._population_indexer[ mutant_index ]
             dXi_dt = extended_system._flow[X_i]
             # Now: The invasion exponent for u_i is 1/X_i dX_i/dt
             I_i = dXi_dt / X_i
+            print ( 'The invasion rate for mutant population is:\n' +
+                '  I = 1/%s d%s/dt' % (str(X_i), str(X_i)) + ' = ' +
+                str(I_i) + '\n' )
             c = ('The invasion rate for mutant population is:\n\\begin{align*}\n' +
                 '  \\mathscr I = \\frac{1}{%s}\\frac{d%s}{dt}' % (latex(X_i), latex(X_i)) + ' &= ' +
                 latex( I_i ) + '\n\\end{align*}\n')
-            print c
             self._debug_output.write( c )
             #I_i = I_i.limit(X_i = 0)
             #self._debug_output.write( ' &= ', latex( I_i ), '\n\\end{align}\n' )
@@ -155,10 +158,11 @@ class AdaptiveDynamicsModel(ODESystem):
                      latex(X_i), latex(diff(I_i, u[mutant_index])))
                     for u in self._phenotype_indexers ),
                 '.\n\\end{align*}\n')
+            print 'mutant traits:', [ u[mutant_index] for u in self._phenotype_indexers ]
             dI_du = [diff(I_i,u[mutant_index]) for u in self._phenotype_indexers]
             #dI_du = [ equilibrium(dI_dui) for dI_dui in dI_du ]
-            limdict = { uu[mutant_index]:uu[resident_index] for uu in self._phenotype_indexers }
-            #print 'limit of', dI_du[0]
+            print 'dI/du:', dI_du
+            limdict = { u[mutant_index]:u[resident_index] for u in self._phenotype_indexers }
             print 'limit as', limdict
             dI_du = [ ( u[resident_index], limits( dI_dui, limdict ) )
                 for u, dI_dui in zip(self._phenotype_indexers, dI_du) ]
@@ -174,7 +178,7 @@ class AdaptiveDynamicsModel(ODESystem):
                 dI_du = [ (u,d.subs(limdict)) for u,d in dI_du ]
             #print 'as u_i->u_*:\n', join( (" dI/d%s: %s" % (u_j, dI_duj)
             #    for u_j, X_j, dI_duj in dI_du), '\n')
-            print 'after those limits:\n  ', '\n  '.join(str(i) for u_j, i in dI_du)
+            print 'after those limits:\n ', '\n  '.join(str(i) for u_j, i in dI_du)
             #from sage.interfaces.maxima_lib import maxima_lib
             #print maxima_lib( dI_du[0][1] )
             dI_du = [ (u_j, limits(dI_duj, {X_i: 0})) for u_j, dI_duj in dI_du ]
@@ -287,14 +291,14 @@ class NumericalAdaptiveDynamicsModel( NumericalODESystem, AdaptiveDynamicsModel 
         self._workaround_limits = False
         self.calculate_adaptive_dynamics()
         print 'ad flow:', self._flow
-        print '+ bindings:', early_bindings + late_bindings + popdyn_model._bindings
+        print '+ bindings:', popdyn_model._bindings + early_bindings + late_bindings
         # unlike AdaptiveDynamicsModel, don't include the equilibrium here,
         # wait until compute_flow() to plug it in
         super(NumericalAdaptiveDynamicsModel, self).__init__(
           self._vars,
           time_variable = time_variable,
           flow = self._flow,
-          bindings=early_bindings + late_bindings + popdyn_model._bindings )
+          bindings=popdyn_model._bindings + early_bindings + late_bindings )
         print '--> flow:', self._flow
         self._debug_output.write( 'The adaptive dynamics comes out to' )
         self._debug_output.write( self )
@@ -435,10 +439,13 @@ def find_interior_equilibrium( ad, pd, u_bindings ):
     if key not in find_interior_equilibrium.cache:
         xs = [ hat(x) for x in pd.population_vars() ]
         #print 'create equilibrium function cache'
-        #print 'ad early bindings', ad._early_bindings
-        #print 'ad bindings', ad._bindings
+        print 'find interior equilibrium at', xs
+        print 'ad early bindings', ad._early_bindings
+        print 'ad bindings', ad._bindings
+        eqa = pd.equilibria()
+        print 'equilibria', eqa
         equilibria = [ { k:ad._bindings( v ) for k,v in eq.items() } for eq in pd.equilibria() ]
-        #print 'equilibria', equilibria
+        print 'becomes', equilibria
         find_interior_equilibrium.cache[key] = (equilibria, xs)
     equilibria, xs = find_interior_equilibrium.cache[key]
     answer = None
