@@ -75,7 +75,7 @@ class DifferenceEquationSystem(SageObject):
         return self._time_variable
     def bind(self, *bindings, **args):
         """If you create a system with various symbolic parameters, like
-        dy/dt = ay^2 + by + c, or something, you can't numerically
+        y |-> ay^2 + by + c, or something, you can't numerically
         integrate it as is, you have to give values to parameters a, b, and c.
         This method gives you a system just like self, but with parameters
         bound to the values provided.
@@ -93,7 +93,7 @@ class DifferenceEquationSystem(SageObject):
         self._bindings.merge_in_place( b )
         self._map = { k:self._bindings(v) for k,v in self._map.items() }
         return self
-    def solve(self, initial_conditions, start_time=0, end_time=20, step=1.):
+    def solve(self, initial_conditions, start_time=0, end_time=20, step=1., bindings=Bindings()):
         """Construct a concrete trajectory of the system.
 
         initial_conditions: list or Bindings of initial values for the state variables"""
@@ -108,17 +108,107 @@ class DifferenceEquationSystem(SageObject):
         timeseries = []
         for t in arange( start_time, end_time+step, step ):
             if t > start_time:
-                state = self.update_state( state, t )
+                state = self.update_state( state, t, bindings=bindings )
             timeseries.append( Bindings( { self._time_variable:t }, { v:x for v,x in zip(self._vars,state) } ) )
         return Trajectory(self, timeseries)
-    def update_state( self, state, t ):
+    def cython_map_function(self):
+        self._parameters = list( set().union( m.variables() for m in self._map.values() ).difference( self._vars ) )
+        SR_to_cython = SRCythonConverter()
+        cython_code = (
+            "from cpython cimport array\n" +
+            "import array\n"
+            "def cython_map( array.array state, double t, array.array parameters ):\n" +
+            '\n'.join(
+            "    %s = state[%d]" %(str(v),i) for i,v in enumerate(self._vars)
+            ) + '\n' +
+            '\n'.join(
+            "    %s = parameters[%d]" %(str(p),i) for i,p in enumerate(self._parameters)
+            ) + '\n' +
+            '\n'.join( ## this blithe conversion from SR to cython code
+                       ## will surely break eventually
+            "    state[%d] = %s" %(i,SR_to_cython(self._map[v].collect_common_factors()))
+                for i,v in enumerate(self._vars)
+            ) + '\n' +
+            "    return 0\n" +
+            "\n"
+        )
+        print cython_code
+        return cython_code
+    def update_state_compiled( self, state, t, bindings=Bindings() ):
+        try: self._cython_module
+        except AttributeError:
+            from sage.misc import cython
+            self._cython_module = sage.misc.cython.compile_and_load( self.cython_map_function() )
+            #print "--compiled"
+        import array
+        try:
+            ## if it's a Bindings, unroll it into an array for the cython
+            state = array.array( 'd', [ state(v) for v in self._vars ] )
+        except TypeError:
+            ## if not, hope it's an array already
+            pass
+        parameters = array.array( 'd', [ bindings(p) for p in self._parameters ] )
+        #print "--call"
+        try:
+            ## use duck typing to catch it if it's not an array yet
+            self._cython_module.cython_map( state, t, parameters )
+        except TypeError:
+            ## convert and redo
+            state = array.array( 'd', state )
+            #print "--call"
+            self._cython_module.cython_map( state, t, parameters )
+        #print "--called"
+        return state
+    def update_state_fast( self, state, t ):
         """Implement the map by transforming current state into next state
 
         state: numerical vector, entries in same order as self._vars, or Bindings
         t: time at next state"""
-        try: state(self._vars[0])
+        try: 
+            ## if state is in Bindings or dict form, flatten into list form
+            state = [ state(v) for v in self._vars ]
+        except TypeError:
+            pass
+        try: self._fast_map
+        except AttributeError:
+            ## compile the map into fast_callable form for fast calling
+            self._fast_map = [
+                fast_callable( self._map[v], vars=self._vars )
+                for v in self._vars
+            ]
+        return [ vm(*state) for vm in self._fast_map ]
+    def update_state_naive( self, state, t ):
+        try: state(vars[0])
         except TypeError:
             state = Bindings( dict( zip( self._vars, state ) ), { self._time_variable:t } )
         return [ state( self._map[v] ) for v in self._vars ]
+    def update_state( self, state, t, bindings=Bindings() ):
+        return self.update_state_compiled( state, t, bindings=bindings )
     ## to do: put various methods of ODESystem into a shared parent class for
     ## use by this class
+
+class SRCythonConverter(sage.symbolic.expression_conversions.ExpressionTreeWalker):
+    def __init__(self, ex=SR(0)):
+        super(SRCythonConverter,self).__init__(ex)
+    def pyobject(self, ex, obj):
+        return str(float(obj))
+    def symbol(self, ex):
+        return str(ex)
+    def arithmetic(self, ex, operator):
+        from sage.symbolic.operators import arithmetic_operators
+        opnm = arithmetic_operators[operator]
+        ## special case: ((a^-1)*b) ==> b/a
+        try:
+            if opnm == '*':
+                factors = list(ex.operands())
+                if arithmetic_operators[factors[0].operator()] == '^':
+                    base, pow = factors[0].operands()
+                    if pow == -1:
+                        return '(%s)/(%s)' % (factors[1],base)
+        except: ## it doesn't have all those components
+            pass
+        ## default case: put the operator name between the operands
+        if opnm == '^': opnm = '**'
+        return opnm.join( '(%s)'%self(z) for z in ex.operands() )
+    def composition(self, ex, operator):
+        return str(operator) + '(' + ','.join(self(z) for z in ex.operands()) + ')'
