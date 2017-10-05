@@ -281,13 +281,19 @@ def dot(v):
 
 def scriptedsymbol( base, superscripts=(), subscripts=(), make_symbolic=False ):
     try:
-        base.expand() # see if it's an expression
-    except AttributeError: # if not
-        base = SR.symbol( base ) # it is now
+        try:
+            base.expand() # see if it's an expression
+        except AttributeError: # if not
+            base = SR( base ) # it is now
+        name = str( base )
+        latex_name = curly_protect( base )
+    except ValueError: # SR fails if it's 'lambda'
+        name = base
+        latex_name = base
     if make_symbolic:
         subscripts = [ SR(s) for s in subscripts ]
         superscripts = [ SR(s) for s in superscripts ]
-    name, latex_name = str(base), curly_protect(base)
+    #name, latex_name = str(base), curly_protect(base)
     import sys
     #print base, 'sub', subscripts, 'super', superscripts; sys.stdout.flush()
     if len(superscripts) > 0:
