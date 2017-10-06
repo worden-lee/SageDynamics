@@ -113,26 +113,29 @@ class DifferenceEquationSystem(SageObject):
             timeseries.append( Bindings( { self._time_variable:t }, { v:x for v,x in zip(self._vars,state) } ) )
             t += self._step
         return Trajectory(self, timeseries)
-    def cython_map_function(self):
-        self._parameters = list( set().union( m.variables() for m in self._map.values() ).difference( self._vars ) )
+    def cython_map_function(self, parameters=None, extra_bindings=Bindings()):
+        if parameters is None:
+            parameters = list( set().union( m.variables() for m in self._map.values() ).difference( self._vars ) )
+        self._parameters = parameters
         SR_to_cython = SRCythonConverter()
         cython_code = (
             "from cpython cimport array\n" +
             "import array\n"
-            "def cython_map( array.array state, double t, array.array parameters ):\n" +
-            '\n'.join(
-            "    %s = state[%d]" %(str(v),i) for i,v in enumerate(self._vars)
-            ) + '\n' +
-            '\n'.join(
-            "    %s = parameters[%d]" %(str(p),i) for i,p in enumerate(self._parameters)
-            ) + '\n' +
-            '\n'.join( ## this blithe conversion from SR to cython code
-                       ## will surely break eventually
-            "    state[%d] = %s" %(i,SR_to_cython(self._map[v].collect_common_factors()))
+            "def update_state( array.array state, double t, array.array parameters ):\n" +
+            ''.join(
+            "    %s = state[%d]\n" %(str(v),i) for i,v in enumerate(self._vars)
+            ) +
+            ''.join(
+            "    %s = parameters[%d]\n" %(str(p),i) for i,p in enumerate(self._parameters)
+            ) +
+            ''.join(
+            "    %s = %s\n" %(k,SR_to_cython(b)) for k,b in extra_bindings._dict.iteritems()
+            ) +
+            ''.join(
+            "    state[%d] = %s\n" %(i,SR_to_cython(self._map[v].collect_common_factors()))
                 for i,v in enumerate(self._vars)
-            ) + '\n' +
-            "    return 0\n" +
-            "\n"
+            ) +
+            "    return 0\n"
         )
         print cython_code
         return cython_code
@@ -153,12 +156,12 @@ class DifferenceEquationSystem(SageObject):
         #print "--call"
         try:
             ## use duck typing to catch it if it's not an array yet
-            self._cython_module.cython_map( state, t, parameters )
+            self._cython_module.update_state( state, t, parameters )
         except TypeError:
             ## convert and redo
             state = array.array( 'd', state )
             #print "--call"
-            self._cython_module.cython_map( state, t, parameters )
+            self._cython_module.update_state( state, t, parameters )
         #print "--called"
         return state
     def update_state_fast( self, state, t ):
@@ -200,15 +203,31 @@ class SRCythonConverter(sage.symbolic.expression_conversions.ExpressionTreeWalke
         from sage.symbolic.operators import arithmetic_operators
         opnm = arithmetic_operators[operator]
         ## special case: ((a^-1)*b) ==> b/a
-        try:
-            if opnm == '*':
-                factors = list(ex.operands())
-                if arithmetic_operators[factors[0].operator()] == '^':
-                    base, pow = factors[0].operands()
-                    if pow == -1:
-                        return '(%s)/(%s)' % (factors[1],base)
-        except: ## it doesn't have all those components
-            pass
+        if opnm == '*':
+            def is_denom(f):
+                try:
+                    if arithmetic_operators[f.operator()] == '^':
+                        base, pow = f.operands()
+                        if pow == -1:
+                            return true
+                except: ## it doesn't have all those components
+                    pass
+                return false
+            def partition( tf, it ):
+                ## utility: partition iterator according to boolean criterion
+                y, n = [], []
+                for z in it:
+                    if tf(z): y.append(z)
+                    else:     n.append(z)
+                return y,n
+            denom, num = partition( is_denom, ex.operands() )
+            if len(num) > 0:
+                st = '(%s)' %('*'.join(self(z) for z in num))
+            else:
+                st = '1'
+            if len(denom) > 0:
+                st += '/(%s)' %('*'.join(self(1/z) for z in denom))
+            return st
         ## default case: put the operator name between the operands
         if opnm == '^': opnm = '**'
         return opnm.join( '(%s)'%self(z) for z in ex.operands() )
