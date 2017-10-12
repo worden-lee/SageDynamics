@@ -118,6 +118,9 @@ class DifferenceEquationSystem(SageObject):
             parameters = list( set().union( m.variables() for m in self._map.values() ).difference( self._vars ) )
         self._parameters = parameters
         SR_to_cython = SRCythonConverter()
+        print self._map
+        for mv in self._map.itervalues():
+            print mv, SR_to_cython(mv.collect_common_factors())
         cython_code = (
             "from cpython cimport array\n" +
             "import array\n"
@@ -221,8 +224,10 @@ class SRCythonConverter(sage.symbolic.expression_conversions.ExpressionTreeWalke
                     else:     n.append(z)
                 return y,n
             denom, num = partition( is_denom, ex.operands() )
-            if len(num) > 0:
-                st = '(%s)' %('*'.join(self(z) for z in num))
+            if len(num) > 1:
+                st = '*'.join('(%s)'%self(z) for z in num)
+            elif len(num) == 1:
+                st = self(num[0])
             else:
                 st = '1'
             if len(denom) > 0:
