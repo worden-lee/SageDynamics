@@ -410,18 +410,28 @@ class ODESystem(SageObject):
         if (filename != ''):
             PL.save(filename)
         return PL
-    def plot_isoclines(self, xlims, ylims, isoclines=None, bindings=Bindings(), filename='', xlabel=-1, ylabel=-1, **args):
+    def plot_isoclines(self, xlims, ylims, isoclines=None, bindings=Bindings(), filename=None, xlabel=None, ylabel=None, **args):
         xlims = tuple( self._bindings.substitute( v ) for v in xlims )
         ylims = tuple( self._bindings.substitute( v ) for v in ylims )
+        ## isoclines may be a list of variables and values,
+        ## if so it means flow[v] == z for v,z in list
         if isoclines is None:
             isoclines = [ (v,0) for v in self._vars ]
+        ## or it may be a list of equations
+        try:
+            [ e.operator() for e in isoclines ]
+        except AttributeError:
+            isoclines = [ bindings( self._flow[v] ) == z for v,z in isoclines ]
         p = Graphics()
-        for v, z in isoclines:
-            p += implicit_plot( bindings( self._flow[v] ) == z, xlims, ylims, **args )
-        if (xlabel == -1): xlabel = xlims[0]
-        if (ylabel == -1): ylabel = ylims[0]
+        for eq in isoclines:
+            print( eq )
+            p += implicit_plot( eq, xlims, ylims, legend_label=str(eq), **args )
+        #print xlims
+        #print ylims
+        if xlabel is None: xlabel = xlims[0]
+        if ylabel is None: ylabel = ylims[0]
         p.axes_labels( ['$%s$'%latex(v) for v in (xlabel,ylabel)] )
-        if (filename != ''):
+        if filename is not None:
             p.save(filename)
         return p
     def add_hats(self, expression=None):
@@ -927,9 +937,11 @@ class PopulationDynamicsSystem(ODESystem):
     def stable_interior_equilibria(self):
         remove_hats = self.remove_hats()
         return [ eq for eq in self.interior_equilibria() if self.is_stable( self.jacobian_matrix( { remove_hats(k):v for k,v in eq.items() } ) ) ]
-    def plot_ZNGIs( self, xlims, ylims, vars=None, **args ):
+    def plot_ZNGIs( self, xlims, ylims, vars=None, isoclines=None, **args ):
         """Plot populations' zero net growth isoclines, using ODESystem's
         plot_isoclines()."""
         if vars is None:
             vars = self.population_vars()
-        return self.plot_isoclines( xlims, ylims, [ (v,0) for v in vars ], **args )
+        if isoclines is None:
+            isoclines = [ (v,0) for v in vars ]
+        return self.plot_isoclines( xlims, ylims, isoclines, **args )
