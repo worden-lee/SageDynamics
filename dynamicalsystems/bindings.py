@@ -412,7 +412,7 @@ class Bindings:
         # if it's a Bindings or dict, apply ourself to all the values
         try:
             return expr.__class__( { k:self.substitute(v) for k,v in expr.items() } )
-        except (AttributeError, ValueError): pass
+        except (AttributeError, ValueError, TypeError): pass
         # or if it's a vector or something, apply to all entries
         try:
             return expr.apply_map( lambda x : self.substitute( x ) )
